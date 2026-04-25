@@ -42,6 +42,8 @@ typedef enum { //keeps track of state
     STATE_PUZZLE,
 	STATE_TRAVEL,
 	STATE_JUNGLE,
+	STATE_CAVE,
+	STATE_COASTLINE,
     STATE_NIGHT_EVENT,
     STATE_WIN,
     STATE_GAME_OVER
@@ -59,6 +61,8 @@ typedef struct { //keeps track of status variables
     uint8_t searches_done;
     uint8_t  inventory[8];  // 0=battery 1=wire 2=tools 3=map 4=rope 5=wood 6=knife 7=key
     uint16_t flags;
+    uint8_t survivors[4]; // 1=present, 0=missing. 0=Engineer,1=Medic,2=Survivalist,3=Skeptic
+    uint8_t notes[4];
     uint8_t  puzzles_solved;
     GameStateEnum state;
     GameStateEnum prev_state;
@@ -126,6 +130,15 @@ void show_travel_menu(void);
 void show_jungle(void);
 void search_jungle(void);
 void show_current_location(void);
+void show_cave(void);
+void search_cave(void);
+void cave_deeper(void);
+void show_coastline(void);
+void search_shipwreck(void);
+void build_signal_fire(void);
+void check_death_conditions(void);
+void night_event(void);
+void show_notes(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -145,6 +158,8 @@ void game_init(void){
     gs.difficulty     = 0;
     gs.location       = 0;
     gs.day            = 1;
+    memset(gs.survivors, 1, sizeof(gs.survivors));
+    memset(gs.notes, 0, sizeof(gs.notes));
     gs.flags          = 0;
     gs.puzzles_solved = 0;
     gs.searches_done  = 0;
@@ -198,6 +213,7 @@ void show_explore(void){
     UART_print("  [4] View inventory\r\n");
     UART_print("  [5] Rest (advance day)\r\n");
     UART_print("  [6] Travel to another location\r\n");
+    UART_print("  [7] Read notes\r\n");
     UART_print("\r\n> ");
 }
 void show_inventory(void){
@@ -240,13 +256,18 @@ void search_wreckage(void){
 }
 void show_survivor_list(void){
 	UART_print("\r\n-- Survivors --\r\n\r\n");
-	    UART_print("  [1] Engineer\r\n");
-	    UART_print("  [2] Medic\r\n");
-	    UART_print("  [3] Survivalist\r\n");
-	    UART_print("  [4] Skeptic\r\n");
-	    UART_print("\r\n> ");
+	if (gs.survivors[0]) UART_print("  [1] Engineer\r\n");
+	if (gs.survivors[1]) UART_print("  [2] Medic\r\n");
+	if (gs.survivors[2]) UART_print("  [3] Survivalist\r\n");
+	if (gs.survivors[3]) UART_print("  [4] Skeptic\r\n");
+	UART_print("\r\n> ");
 }
 void show_dialogue(uint8_t survivor){
+	if (!gs.survivors[survivor]) {
+	UART_print("\r\nThat survivor is no longer here.\r\n");
+	UART_print("\r\nPress any key to continue...\r\n");
+	return;
+	}
 	switch(survivor){
 		case 0: //Engineer
 			gs.flags |=FLAG_MET_ENGINEER; //bitwise OR. met engineer flag bit=1
@@ -370,6 +391,8 @@ void show_jungle(void){
     UART_print("  [3] View map\r\n");
     UART_print("  [4] View inventory\r\n");
     UART_print("  [5] Travel\r\n");
+    UART_print("  [6] Rest (advance day)\r\n");
+    UART_print("  [7] Read notes\r\n");
     UART_print("\r\n> ");
 }
 void search_jungle(void){
@@ -404,9 +427,254 @@ void show_current_location(void){
     switch(gs.location){
         case 0: show_explore();    break;
         case 1: show_jungle();     break;
-        case 2: show_explore();    break;
-        case 3: show_explore();    break;
+        case 2: show_cave();    break;
+        case 3: show_coastline();    break;
     }
+}
+void show_cave(void){
+	UART_print("\r\n== CAVE ==\r\n");
+	if (gs.fear < 34) {
+	    UART_print("A cave entrance waits ahead. Cool air drifts from within.\r\n");
+	}
+	else if (gs.fear < 67) {
+	    UART_print("The cave is darker than you remembered. Your torch flickers.\r\n");
+	}
+	else {
+	    UART_print("Something breathes in the dark. You tell yourself it's the wind.\r\n");
+	}
+	UART_print("\r\n  [1] Search the cave\r\n");
+	UART_print("  [2] Go deeper\r\n");
+	UART_print("  [3] View map\r\n");
+	UART_print("  [4] View inventory\r\n");
+	UART_print("  [5] Travel\r\n");
+	UART_print("  [6] Rest (advance day)\r\n");
+	UART_print("  [7] Read notes\r\n");
+	UART_print("\r\n> ");
+}
+void search_cave(void){
+	if (gs.inventory[ITEM_KEY]){
+		UART_print("\r\nYou've already found everything useful here.\r\n");
+	}
+	else {
+		gs.inventory[ITEM_KEY]=1;
+		gs.flags |= FLAG_FOUND_KEY;
+		UART_print("\r\nHidden beneath the rocks lies a rusty old key... as if waiting to be found.\r\n");
+		UART_print("\r\n You pocket the key, a faint chill following your touch\r\n");
+	}
+	gs.day++;
+	UART_print("\r\nPress any key to continue...\r\n");
+}
+void cave_deeper(void){
+	gs.fear += 10;
+	if (gs.fear > 100) gs.fear = 100;
+	UART_print("\r\nYou descend deeper into the cave.\r\n");
+	UART_print("The walls tighten around you. The air thins.\r\n");
+	UART_print("A chamber waits ahead, its only passage buried in rubble.\r\n");
+	//puzzle will be added later
+	gs.day++;
+	UART_print("\r\nPress any key to continue...\r\n");
+}
+void show_coastline(void){
+    UART_print("\r\n== COASTLINE ==\r\n");
+    if (gs.fear < 34) {
+        UART_print("Waves crash against jagged rocks. You spot a shipwreck off in the distance.\r\n");
+    }
+    else if (gs.fear < 67) {
+        UART_print("The tide is coming in fast. The shipwreck groans in the current.\r\n");
+    }
+    else{
+        UART_print("The ocean stretches endlessly. No ships. No planes. Nothing is coming.\r\n");
+    }
+    UART_print("\r\n  [1] Search the shipwreck\r\n");
+    UART_print("  [2] Build signal fire\r\n");
+    UART_print("  [3] View map\r\n");
+    UART_print("  [4] View inventory\r\n");
+    UART_print("  [5] Travel\r\n");
+    UART_print("  [6] Rest (advance day)\r\n");
+    UART_print("  [7] Read notes\r\n");
+    UART_print("\r\n> ");
+}
+void search_shipwreck(void){
+    uint8_t roll = (gs.day * 23 + gs.fear + 11) % 2; // 0 or 1
+    if (gs.inventory[6] && gs.inventory[ITEM_MAP]) {
+        UART_print("\r\nThe shipwreck has nothing left to offer.\r\n");
+    }
+    else {
+        if (roll == 0 && !gs.inventory[ITEM_KNIFE]) {
+            gs.inventory[ITEM_KNIFE] = 1;
+            UART_print("\r\nYou find a Knife wedged in the hull.\r\n");
+        }
+        else if (roll == 1 && !gs.inventory[ITEM_MAP]) {
+            gs.inventory[ITEM_MAP] = 1;
+            UART_print("\r\nYou find a waterlogged Map. Still readable.\r\n");
+        }
+        else {
+            UART_print("\r\nYou search but find nothing new this time.\r\n");
+        }
+    }
+    gs.day++;
+    UART_print("\r\nPress any key to continue...\r\n");
+}
+void build_signal_fire(void){
+    if (!(gs.flags & FLAG_FIRE_LIT)) {
+        gs.flags |= FLAG_FIRE_LIT;
+        gs.morale += 15;
+        if (gs.morale > 100) gs.morale = 100;
+        UART_print("\r\nYou gather driftwood and light a signal fire.\r\n");
+        UART_print("Smoke rises into the sky. Someone might see it.\r\n");
+        UART_print("Morale increased.\r\n");
+    }
+    else {
+        UART_print("\r\nThe signal fire is already burning.\r\n");
+        UART_print("All you can do now is wait and hope.\r\n");
+    }
+    gs.day++;
+    UART_print("\r\nPress any key to continue...\r\n");
+}
+void check_death_conditions(void){
+    if (gs.health <= 0) {
+        gs.state = STATE_GAME_OVER;
+        UART_print("\r\n##################################################\r\n");
+        UART_print("#                                                #\r\n");
+        UART_print("#                 YOU DIED                       #\r\n");
+        UART_print("#         Your injuries were too severe.         #\r\n");
+        UART_print("#                                                #\r\n");
+        UART_print("##################################################\r\n");
+        UART_print("\r\nPress reset to play again.\r\n");
+        while(1);
+    }
+    if (gs.fear >= 100) {
+        gs.state = STATE_GAME_OVER;
+        UART_print("\r\n##################################################\r\n");
+        UART_print("#                                                #\r\n");
+        UART_print("#            PSYCHOLOGICAL COLLAPSE              #\r\n");
+        UART_print("#     The island broke you. You gave up.         #\r\n");
+        UART_print("#                                                #\r\n");
+        UART_print("##################################################\r\n");
+        UART_print("\r\nPress reset to play again.\r\n");
+        while(1);
+    }
+    if (gs.morale <= 0) {
+        gs.state = STATE_GAME_OVER;
+        UART_print("\r\n##################################################\r\n");
+        UART_print("#                                                #\r\n");
+        UART_print("#               ABANDONED                        #\r\n");
+        UART_print("#   The group fell apart. You were left behind.  #\r\n");
+        UART_print("#                                                #\r\n");
+        UART_print("##################################################\r\n");
+        UART_print("\r\nPress reset to play again.\r\n");
+        while(1);
+    }
+}
+void night_event(void){
+    uint8_t roll = (gs.day * 31 + gs.fear * 7 + gs.health * 3 + gs.morale) % 6;
+    UART_print("\r\n-- Night falls --\r\n\r\n");
+    switch(roll)
+    {
+        case 0: // Storm
+            gs.fear += 15;
+            if (gs.fear > 100) gs.fear = 100;
+            UART_print("A violent storm rolls in. Lightning splits the sky.\r\n");
+            UART_print("Fear increased.\r\n");
+            break;
+        case 1: // Animal attack
+            gs.health -= 15;
+            gs.fear += 10;
+            if (gs.fear > 100) gs.fear = 100;
+            UART_print("Something attacks your camp in the night.\r\n");
+            UART_print("You fight it off but take injuries.\r\n");
+            UART_print("Health decreased. Fear increased.\r\n");
+            break;
+        case 2: // Footsteps
+            gs.fear += 20;
+            if (gs.fear > 100) gs.fear = 100;
+            UART_print("You hear footsteps circling the camp.\r\n");
+            UART_print("By morning, whoever it was is gone.\r\n");
+            UART_print("Fear increased.\r\n");
+            break;
+        case 3: // Survivor missing
+        {
+            uint8_t victim = (gs.day * 13 + gs.fear) % 4;
+            gs.survivors[victim] = 0;
+            gs.notes[victim] = 1;
+            gs.morale -= 20;
+            if (gs.morale < 0) gs.morale = 0;
+            UART_print("You wake to find one of the survivors gone.\r\n");
+            // each victim leaves a note
+            switch(victim)
+            {
+                case 0:
+                    UART_print("You find a scrawled note:\r\n");
+                    UART_print("'Battery + wire + tools = radio tower. --Engineer'\r\n");
+                    break;
+                case 1:
+                    UART_print("You find a medical kit left behind with a note:\r\n");
+                    UART_print("'Use this. Stay alive. --Medic'\r\n");
+                    gs.health += 10;
+                    if (gs.health > 100) gs.health = 100;
+                    break;
+                case 2:
+                    UART_print("You find a note scratched into the sand:\r\n");
+                    UART_print("'Rope + wood + knife = raft. Trust no one. --Survivalist'\r\n");
+                    break;
+                case 3:
+                    UART_print("You find a note:\r\n");
+                    UART_print("'We were never getting off this island. --Skeptic'\r\n");
+                    gs.morale -= 10;
+                    if (gs.morale < 0) gs.morale = 0;
+                    break;
+            }
+            UART_print("Morale decreased.\r\n");
+            break;
+        }
+        case 4: // Fire goes out
+            if (gs.flags & FLAG_FIRE_LIT) {
+                gs.flags &= ~FLAG_FIRE_LIT;
+                gs.morale -= 10;
+                if (gs.morale < 0) gs.morale = 0;
+                UART_print("The signal fire went out in the night.\r\n");
+                UART_print("Morale decreased.\r\n");
+            }
+            else {
+                UART_print("A quiet night. You sleep better than expected.\r\n");
+                gs.morale += 5;
+                if (gs.morale > 100) gs.morale = 100;
+            }
+            break;
+        case 5: // Peaceful night
+            gs.morale += 10;
+            gs.health += 5;
+            if (gs.morale > 100) gs.morale = 100;
+            if (gs.health > 100) gs.health = 100;
+            UART_print("A rare peaceful night. The stars are beautiful.\r\n");
+            UART_print("Health and morale increased.\r\n");
+            break;
+    }
+    if (gs.fear >= 70) gs.flags |= FLAG_HIGH_FEAR;
+    UART_print("\r\nPress any key to continue...\r\n");
+    check_death_conditions();
+}
+void show_notes(void){
+    UART_print("\r\n-- Notes --\r\n\r\n");
+    uint8_t any = 0;
+    if (gs.notes[0]) {
+        UART_print("Engineer: 'Battery + wire + tools = radio tower.'\r\n");
+        any = 1;
+    }
+    if (gs.notes[1]) {
+        UART_print("Medic: 'Stay alive.'\r\n");
+        any = 1;
+    }
+    if (gs.notes[2]) {
+        UART_print("Survivalist: 'Rope + wood + knife = raft.'\r\n");
+        any = 1;
+    }
+    if (gs.notes[3]) {
+        UART_print("Skeptic: 'We were never getting off this island.'\r\n");
+        any = 1;
+    }
+    if (!any) UART_print("No notes yet.\r\n");
+    UART_print("\r\nPress any key to continue...\r\n");
 }
 
 /* USER CODE END 0 */
@@ -510,13 +778,19 @@ int main(void)
 
         	  }
         	  else if (c == '5') {
-                  gs.day++;
-                  UART_print("\r\nYou rest. Night falls...\r\n");
-                  show_explore();
+        		  gs.prev_state = gs.state;
+        		  gs.state = STATE_INVENTORY;
+        		  gs.day++;
+        		  night_event();
               }
         	  else if (c == '6'){
         		  gs.state = STATE_TRAVEL;
         		  show_travel_menu();
+        	  }
+        	  else if (c == '7'){
+        		  gs.prev_state = STATE_EXPLORE;
+        		  gs.state = STATE_INVENTORY;
+        		  show_notes();
         	  }
               break;
           case STATE_INVENTORY:
@@ -548,10 +822,13 @@ int main(void)
         	  }
         	  else if (c == '3'){
         		  gs.location = 2; //Cave
+        		  gs.state = STATE_CAVE;
+        		  show_cave();
         	  }
         	  else if (c == '4'){
         		  gs.location = 3; //Coastline
-        		  gs.state = STATE_EXPLORE;
+        		  gs.state = STATE_COASTLINE;
+        		  show_coastline();
         	  }
         	  break;
           case STATE_JUNGLE:
@@ -578,6 +855,91 @@ int main(void)
         	  else if (c == '5'){//travel
         		  gs.state = STATE_TRAVEL;
         		  show_travel_menu();
+        	  }
+        	  else if (c == '6') {
+        	      gs.prev_state = gs.state;
+        	      gs.state = STATE_INVENTORY;
+        	      gs.day++;
+        	      night_event();
+        	  }
+        	  else if (c == '7') {
+        	      gs.prev_state = gs.state;
+        	      gs.state = STATE_INVENTORY;
+        	      show_notes();
+        	  }
+        	  break;
+          case STATE_CAVE:
+        	  if (c == '1'){ //search  the cave
+        		  gs.prev_state = STATE_CAVE;
+        		  gs.state = STATE_INVENTORY;
+        		  search_cave();
+        	  }
+        	  else if (c == '2'){ //go deeper
+        		  gs.prev_state = STATE_CAVE;
+        		  gs.state = STATE_INVENTORY;
+        		  cave_deeper();
+        	  }
+        	  else if (c == '3'){ //view map
+        		  gs.prev_state = STATE_CAVE;
+        		  gs.state = STATE_INVENTORY;
+        		  show_map();
+        	  }
+        	  else if (c == '4'){ //view inventory
+        		  gs.prev_state = STATE_CAVE;
+        		  gs.state = STATE_INVENTORY;
+        		  show_inventory();
+        	  }
+        	  else if (c == '5'){ //travel
+        		  gs.state = STATE_TRAVEL;
+        		  show_travel_menu();
+        	  }
+        	  else if (c == '6') {
+        	       gs.prev_state = gs.state;
+        	       gs.state = STATE_INVENTORY;
+        	       gs.day++;
+        	       night_event();
+        	  }
+        	  else if (c == '7') {
+        	       gs.prev_state = gs.state;
+        	       gs.state = STATE_INVENTORY;
+        	       show_notes();
+        	  }
+        	  break;
+          case STATE_COASTLINE:
+        	  if (c == '1'){ //search shipwreck
+        		  gs.prev_state = STATE_COASTLINE;
+        		  gs.state = STATE_INVENTORY;
+        		  search_shipwreck();
+        	  }
+        	  else if (c == '2'){ //build signal fire
+        		  gs.prev_state = STATE_COASTLINE;
+        		  gs.state = STATE_INVENTORY;
+        		  build_signal_fire();
+        	  }
+        	  else if (c == '3'){ //view map
+        		  gs.prev_state = STATE_COASTLINE;
+        		  gs.state = STATE_INVENTORY;
+        		  show_map();
+        	  }
+        	  else if (c == '4'){ //view inventory
+        		  gs.prev_state = STATE_COASTLINE;
+        		  gs.state = STATE_INVENTORY;
+        		  show_inventory();
+        	  }
+        	  else if (c == '5'){ //travel
+        		  gs.state = STATE_TRAVEL;
+        		  show_travel_menu();
+        	  }
+        	  else if (c == '6') {
+        	      gs.prev_state = gs.state;
+        	      gs.state = STATE_INVENTORY;
+        	      gs.day++;
+        	      night_event();
+        	  }
+        	      else if (c == '7') {
+        	      gs.prev_state = gs.state;
+        	      gs.state = STATE_INVENTORY;
+        	      show_notes();
         	  }
         	  break;
 
