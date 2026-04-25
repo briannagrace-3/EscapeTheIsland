@@ -45,6 +45,8 @@ typedef enum { //keeps track of state
 	STATE_CAVE,
 	STATE_COASTLINE,
     STATE_NIGHT_EVENT,
+	STATE_TOWER,
+	STATE_BUNKER,
     STATE_WIN,
     STATE_GAME_OVER
 } GameStateEnum;
@@ -64,6 +66,9 @@ typedef struct { //keeps track of status variables
     uint8_t survivors[4]; // 1=present, 0=missing. 0=Engineer,1=Medic,2=Survivalist,3=Skeptic
     uint8_t notes[4];
     uint8_t  puzzles_solved;
+    uint8_t puzzle_step;        // tracks progress through puzzle
+    char    puzzle_input[8];    // stores player input
+    uint8_t active_puzzle;      // 0=radio, 1=cave, 2=bunker
     GameStateEnum state;
     GameStateEnum prev_state;
 } GameState;
@@ -81,6 +86,7 @@ typedef struct { //keeps track of status variables
 #define FLAG_FIRE_LIT        (1 << 5)
 #define FLAG_RAFT_BUILT      (1 << 6)
 #define FLAG_HIGH_FEAR       (1 << 7)
+#define FLAG_ENGINEER_HINT  (1 << 8)
 
 #define ITEM_BATTERY  0
 #define ITEM_WIRE     1
@@ -139,6 +145,11 @@ void build_signal_fire(void);
 void check_death_conditions(void);
 void night_event(void);
 void show_notes(void);
+void show_tower(void);
+void show_bunker(void);
+void puzzle_radio(void);
+void puzzle_cave(void);
+void puzzle_bunker(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -162,6 +173,9 @@ void game_init(void){
     memset(gs.notes, 0, sizeof(gs.notes));
     gs.flags          = 0;
     gs.puzzles_solved = 0;
+    gs.puzzle_step  = 0;
+    gs.active_puzzle = 0;
+    memset(gs.puzzle_input, 0, sizeof(gs.puzzle_input));
     gs.searches_done  = 0;
     memset(gs.inventory, 0, sizeof(gs.inventory));
     gs.state          = STATE_MAIN_MENU;
@@ -280,6 +294,13 @@ void show_dialogue(uint8_t survivor){
 			else if (gs.puzzles_solved & 0x01) {
 				UART_print("\r\nEngineer: \"Good work on the radio. We might actually get out of here.\"\r\n");
 			}
+			else if ((gs.difficulty == 1) && FLAG_FOUND_KEY) {
+				gs.flags |= FLAG_ENGINEER_HINT;
+				UART_print("\r\nEngineer: \"If we can find a battery and some wire, I can fix the radio tower.\"\r\n");
+				UART_print("Engineer: \"The panel has four wires. Blue carries the signal.\"\r\n");
+				UART_print("Engineer: \"Red grounds the charge. Yellow is the warning wire.\"\r\n");
+				UART_print("Engineer: \"Green completes the loop. Get the order right or it'll short out.\"\r\n");
+			}
 			else {
 				UART_print("\r\nEngineer: \"If we can find a battery and some wire, I can fix the radio tower.\"\r\n");
 			}
@@ -373,6 +394,10 @@ void show_travel_menu(void){
 	UART_print(gs.location == 1 ? "  [2] Jungle (you are here)\r\n" : "  [2] Jungle\r\n");
 	UART_print(gs.location == 2 ? "  [3] Cave (you are here)\r\n" : "  [3] Cave\r\n");
 	UART_print(gs.location == 3 ? "  [4] Coastline (you are here)\r\n" : "  [4] Coastline\r\n");
+	if (gs.inventory[ITEM_MAP])
+	        UART_print(gs.location == 4 ? "  [5] Radio Tower (you are here)\r\n" : "  [5] Radio Tower\r\n");
+	if (gs.inventory[ITEM_KEY])
+	        UART_print(gs.location == 5 ? "  [6] Bunker (you are here)\r\n" : "  [6] Bunker\r\n");
 	UART_print("\r\n> ");
 }
 void show_jungle(void){
@@ -429,6 +454,8 @@ void show_current_location(void){
         case 1: show_jungle();     break;
         case 2: show_cave();    break;
         case 3: show_coastline();    break;
+        case 4: show_tower();   break;
+        case 5: show_bunker();  break;
     }
 }
 void show_cave(void){
@@ -470,9 +497,7 @@ void cave_deeper(void){
 	UART_print("\r\nYou descend deeper into the cave.\r\n");
 	UART_print("The walls tighten around you. The air thins.\r\n");
 	UART_print("A chamber waits ahead, its only passage buried in rubble.\r\n");
-	//puzzle will be added later
-	gs.day++;
-	UART_print("\r\nPress any key to continue...\r\n");
+	puzzle_cave();
 }
 void show_coastline(void){
     UART_print("\r\n== COASTLINE ==\r\n");
@@ -660,6 +685,12 @@ void show_notes(void){
     if (gs.notes[0]) {
         UART_print("Engineer: 'Battery + wire + tools = radio tower.'\r\n");
         any = 1;
+        if (gs.difficulty==1){
+        	gs.flags |= FLAG_ENGINEER_HINT;
+        	UART_print("When you get in: The panel has four wires. Blue carries the signal.\r\n");
+        	UART_print("Red grounds the charge. Yellow is the warning wire.\r\n");
+        	UART_print("Green completes the loop. Get the order right or it'll short out.\r\n");
+        }
     }
     if (gs.notes[1]) {
         UART_print("Medic: 'Stay alive.'\r\n");
@@ -676,7 +707,149 @@ void show_notes(void){
     if (!any) UART_print("No notes yet.\r\n");
     UART_print("\r\nPress any key to continue...\r\n");
 }
+void show_tower(void){
+    UART_print("\r\n== RADIO TOWER ==\r\n");
+    if (gs.fear < 34) {
+        UART_print("A rusted radio tower rises above the trees. It might still work.\r\n");
+    }
+    else if (gs.fear < 67) {
+        UART_print("The tower sways in the wind. Loose wires whip and dangle in every direction.\r\n");
+    }
+    else {
+        UART_print("The tower looks like it could collapse any moment. Do you really want to climb it?\r\n");
+    }
+    UART_print("\r\n  [1] Attempt radio puzzle\r\n");
+    UART_print("  [2] View map\r\n");
+    UART_print("  [3] View inventory\r\n");
+    UART_print("  [4] Read notes\r\n");
+    UART_print("  [5] Travel\r\n");
+    UART_print("\r\n> ");
+}
+void show_bunker(void){
+    UART_print("\r\n== BUNKER ==\r\n");
+    if (gs.fear < 34) {
+        UART_print("A bunker door is built into the hillside. The key fits the lock.\r\n");
+    } else if (gs.fear < 67) {
+        UART_print("The bunker door is cold to the touch. Something hums inside.\r\n");
+    } else {
+        UART_print("You don't want to know what's in there, but what choice do you have?\r\n");
+    }
+    UART_print("\r\n  [1] Attempt generator puzzle\r\n");
+    UART_print("  [2] View map\r\n");
+    UART_print("  [3] View inventory\r\n");
+    UART_print("  [4] Read notes\r\n");
+    UART_print("  [5] Travel\r\n");
+    UART_print("\r\n> ");
+}
+void puzzle_radio(void)
+{
+    // Check required items
+    if (!gs.inventory[ITEM_BATTERY] || !gs.inventory[ITEM_WIRE] ||
+        !gs.inventory[ITEM_TOOLS]   || !gs.inventory[ITEM_MAP]) {
+        UART_print("\r\nYou don't have everything you need.\r\n");
+        UART_print("Required: Battery, Wire, Tool Kit, Map\r\n");
+        UART_print("\r\nPress any key to continue...\r\n");
+        return;
+    }
 
+    UART_print("\r\n== RADIO TOWER PUZZLE ==\r\n");
+    UART_print("The radio panel has four wire slots: R G B Y\r\n");
+    UART_print("You need to connect them in the correct order.\r\n\r\n");
+    if (gs.difficulty == 0) {
+        UART_print("Four wires must be connected in order:\r\n\r\n");
+        UART_print("  - Red is not last, but Blue comes before Red.\r\n");
+        UART_print("  - Yellow comes after Red, but before Green.\r\n");
+    }
+    else {
+        if(gs.character == 0){
+    	    	UART_print("  - The wire that carries the signal starts the circuit.\r\n");
+    	    	UART_print("  - The wire that grounds the charge follows immediately.\r\n");
+    	    	UART_print("  - The warning wire comes third.\r\n");
+    	    	UART_print("  - The wire that completes the loop is last.\r\n\r\n");
+    	    	UART_print(" You recall that blue carries the signal, yellow is the warning wire, and red grounds the charge");
+    	    	}
+        else if (gs.flags & FLAG_ENGINEER_HINT) {
+    	        UART_print("  - The wire that carries the signal starts the circuit.\r\n");
+    	        UART_print("  - The wire that grounds the charge follows immediately.\r\n");
+    	        UART_print("  - The warning wire comes third.\r\n");
+    	        UART_print("  - The wire that completes the loop is last.\r\n\r\n");
+    	        UART_print("Maybe the engineer's hint could be used to solve this..");
+    	    }
+    	else {
+    	        UART_print("The panel is unlabeled. You'll need to figure this out yourself.\r\n");
+    	        UART_print("Maybe someone on the island knows something...\r\n\r\n");
+    	    }
+    }
+    UART_print("Enter the correct sequence (4 letters, e.g. BRGY):\r\n");
+    UART_print("> ");
+    // Switch to puzzle input mode
+    gs.state = STATE_PUZZLE;
+    gs.puzzle_step = 0;
+    memset(gs.puzzle_input, 0, sizeof(gs.puzzle_input));
+}
+void puzzle_cave(void){
+    if (!(gs.flags & FLAG_FOUND_KEY)) {
+        UART_print("\r\nThe chamber is blocked. Search around some more, and try again later.\r\n");
+        UART_print("\r\nPress any key to continue...\r\n");
+        return;
+    }
+    UART_print("\r\n== CAVE PUZZLE ==\r\n");
+    UART_print("You squeeze into a sealed chamber.\r\n");
+    UART_print("The air is thin. Debris blocks the passage ahead.\r\n\r\n");
+    UART_print("Three piles block the way: A, B, and C.\r\n\r\n");
+    if (gs.difficulty == 0) {
+    	UART_print("A quick inspection reveals:\r\n");
+    	UART_print("  - Pile C is not structurally connected to the base layer, but it is locked by the stability of A.\r\n");
+    	UART_print("  - Pile B is blocking access to Pile A.\r\n");
+    	UART_print("  - Pile A must be cleared before anything behind it can shift.\r\n");
+    }
+    else {
+        UART_print("The air grows thinner with every second you hesitate.\r\n");
+        UART_print("The structural integrity is critical:\r\n");
+        UART_print("  - Pile C is immovable while Pile A maintains its current tension.\r\n");
+        UART_print("  - Pile A is structurally braced by the position of Pile B.\r\n");
+        UART_print("  - Pile B is the only mass currently free of external load.\r\n\r\n");
+    }
+    UART_print("Which pile do you move first? (A/B/C):\r\n> ");
+    gs.active_puzzle = 1;
+    gs.puzzle_step = 0;
+    gs.state = STATE_PUZZLE;
+}
+void puzzle_bunker(void){
+    if (!gs.inventory[ITEM_BATTERY] || !gs.inventory[ITEM_WIRE]) {
+        UART_print("\r\nThe generator needs power components.\r\n");
+        UART_print("Required: Battery, Wire\r\n");
+        UART_print("\r\nPress any key to continue...\r\n");
+        return;
+    }
+    UART_print("\r\n== BUNKER PUZZLE ==\r\n");
+    UART_print("A rusted generator sits in the corner.\r\n");
+    UART_print("Three steps to get it running:\r\n\r\n");
+    UART_print("  [1] Connect the battery\r\n");
+    UART_print("  [2] Route the wiring\r\n");
+    UART_print("  [3] Prime the fuel line\r\n\r\n");
+    if (gs.difficulty == 0) {
+        UART_print("Hint: Prime the fuel line before connecting anything.\r\n");
+        UART_print("Connecting power before priming will short the system.\r\n\r\n");
+    }
+    else {
+    	if (gs.character == 0){
+    		UART_print("You recall you should always prime mechanical systems before applying power.\r\n\r\n");
+    	}
+        if (gs.flags & FLAG_ENGINEER_HINT) {
+            UART_print("You recall the Engineer mentioning something about\r\n");
+            UART_print("always priming mechanical systems before applying power.\r\n\r\n");
+        }
+        else {
+            UART_print("The generator looks complex. Maybe someone on the\r\n");
+            UART_print("island knows how these systems work...\r\n\r\n");
+        }
+    }
+    UART_print("Choose your first step (1/2/3):\r\n> ");
+    gs.active_puzzle = 2;
+    gs.puzzle_step = 0;
+    gs.state = STATE_PUZZLE;
+}
 /* USER CODE END 0 */
 
 /**
@@ -830,6 +1003,16 @@ int main(void)
         		  gs.state = STATE_COASTLINE;
         		  show_coastline();
         	  }
+        	  else if (c == '5' && gs.inventory[ITEM_MAP]) {
+        	      gs.location = 4; //tower
+        	      gs.state = STATE_TOWER;
+        	      show_tower();
+        	  }
+        	  else if (c == '6' && gs.inventory[ITEM_KEY]) {
+        	      gs.location = 5; //bunker
+        	      gs.state = STATE_BUNKER;
+        	      show_bunker();
+        	  }
         	  break;
           case STATE_JUNGLE:
         	  if (c == '1'){ //search for materials
@@ -942,6 +1125,190 @@ int main(void)
         	      show_notes();
         	  }
         	  break;
+          case STATE_TOWER:
+              if (c == '1') {
+                  gs.prev_state = STATE_TOWER;
+                  gs.state = STATE_PUZZLE;
+                  puzzle_radio();
+              } else if (c == '2') {
+                  gs.prev_state = STATE_TOWER;
+                  gs.state = STATE_INVENTORY;
+                  show_map();
+              } else if (c == '3') {
+                  gs.prev_state = STATE_TOWER;
+                  gs.state = STATE_INVENTORY;
+                  show_inventory();
+              } else if (c == '4') {
+                  gs.prev_state = STATE_TOWER;
+                  gs.state = STATE_INVENTORY;
+                  show_notes();
+              } else if (c == '5') {
+                  gs.state = STATE_TRAVEL;
+                  show_travel_menu();
+              }
+              break;
+
+          case STATE_BUNKER:
+              if (c == '1') {
+                  gs.prev_state = STATE_BUNKER;
+                  gs.state = STATE_PUZZLE;
+                  puzzle_bunker();
+
+              } else if (c == '2') {
+                  gs.prev_state = STATE_BUNKER;
+                  gs.state = STATE_INVENTORY;
+                  show_map();
+              } else if (c == '3') {
+                  gs.prev_state = STATE_BUNKER;
+                  gs.state = STATE_INVENTORY;
+                  show_inventory();
+              } else if (c == '4') {
+                  gs.prev_state = STATE_BUNKER;
+                  gs.state = STATE_INVENTORY;
+                  show_notes();
+              } else if (c == '5') {
+                  gs.state = STATE_TRAVEL;
+                  show_travel_menu();
+              }
+              break;
+          case STATE_PUZZLE:
+              if (gs.active_puzzle == 0){ //radio tower puzzle
+                  // Echo the character back so player can see what they typed
+                  char echo[2] = {c, '\0'};
+                  UART_print(echo);
+                  // Store input
+                  gs.puzzle_input[gs.puzzle_step] = c;
+                  gs.puzzle_step++;
+                  if (gs.puzzle_step >= 4) {
+                      UART_print("\r\n");
+                      // Check answer
+                      if ((gs.puzzle_input[0] == 'B' || gs.puzzle_input[0] == 'b') &&
+                          (gs.puzzle_input[1] == 'R' || gs.puzzle_input[1] == 'r') &&
+                          (gs.puzzle_input[2] == 'Y' || gs.puzzle_input[2] == 'y') &&
+                          (gs.puzzle_input[3] == 'G' || gs.puzzle_input[3] == 'g')) {
+                          // Correct
+                          gs.puzzles_solved |= 0x01;
+                          UART_print("\r\nThe radio crackles to life!\r\n");
+                          UART_print("A voice cuts through the static:\r\n");
+                          UART_print("\"...survivor signal received... coordinates locked...\"\r\n");
+                          UART_print("\"...rescue team en route... hold your position...\"\r\n");
+                          UART_print("\r\nYou solved the Radio puzzle!\r\n");
+                      }
+                      else {
+                          // Wrong
+                          UART_print("\r\nSparks fly. Wrong sequence.\r\n");
+                          gs.health -= 10;
+                          if (gs.health <= 0) gs.health = 0;
+                          UART_print("Health decreased.\r\n");
+                      }
+                      gs.puzzle_step = 0;
+                      memset(gs.puzzle_input, 0, sizeof(gs.puzzle_input));
+                      gs.state = STATE_TOWER;
+                      UART_print("\r\nPress any key to continue...\r\n");
+                      gs.state = STATE_INVENTORY;
+                      gs.prev_state = STATE_TOWER;
+                      check_death_conditions();
+                  }
+              }
+              else if (gs.active_puzzle == 1){ //cave puzzle
+                  char echo[2] = {c, '\0'};
+                  UART_print(echo);
+                  UART_print("\r\n");
+                  const char correct[3] = {'B', 'A', 'C'};
+                  if (c == correct[gs.puzzle_step] || c == correct[gs.puzzle_step] + 32) {
+                      // Correct choice
+                      gs.puzzle_step++;
+                      if (gs.puzzle_step == 1) UART_print("You clear pile B. The passage opens slightly.\r\n");
+                      if (gs.puzzle_step == 2) UART_print("You heave pile A aside. Almost through.\r\n");
+                      if (gs.puzzle_step == 3) {
+                          // Solved
+                          gs.puzzles_solved |= 0x02;
+                          UART_print("You carefully remove pile C. The passage is clear!\r\n");
+                          UART_print("Fresh air rushes in. You crawl through to the other side.\r\n");
+                          UART_print("You found an underground chamber with supplies.\r\n");
+                          UART_print("\r\nYou solved the Cave puzzle!\r\n");
+                          gs.puzzle_step = 0;
+                          gs.active_puzzle = 0;
+                          gs.state = STATE_INVENTORY;
+                          gs.prev_state = STATE_CAVE;
+                          UART_print("\r\nPress any key to continue...\r\n");
+                      } else {
+                          // Prompt next move
+                          UART_print("Which pile next? (A/B/C):\r\n> ");
+                      }
+                  } else {
+                      // Wrong
+                      gs.fear += 10;
+                      if (gs.fear > 100) gs.fear = 100;
+                      gs.puzzle_step = 0; // reset sequence
+                      if (gs.difficulty == 0) {
+                          UART_print("Wrong choice! The debris shifts dangerously.\r\n");
+                          UART_print("Fear increased. Try again from the start.\r\n");
+                          UART_print("Hint: Start with B.\r\n");
+                      } else {
+                          UART_print("The debris collapses. You scramble back.\r\n");
+                          UART_print("Fear increased. Try again from the start.\r\n");
+                      }
+                      UART_print("Which pile do you move first? (A/B/C):\r\n> ");
+                  }
+                  check_death_conditions();
+              }
+              else if (gs.active_puzzle == 2){ // Bunker puzzle
+                  char echo[2] = {c, '\0'};
+                  UART_print(echo);
+                  UART_print("\r\n");
+                  const char correct[3] = {'3', '1', '2'};
+                  if (c == correct[gs.puzzle_step]) {
+                      gs.puzzle_step++;
+                      if (gs.puzzle_step == 1) {
+                          UART_print("You prime the fuel line. It sputters and catches.\r\n");
+                          UART_print("Next step (1/2/3):\r\n> ");
+                      }
+                      else if (gs.puzzle_step == 2) {
+                          UART_print("You connect the battery. The generator hums weakly.\r\n");
+                          UART_print("Next step (1/2/3):\r\n> ");
+                      }
+                      else if (gs.puzzle_step == 3) {
+                          // Solved
+                          gs.puzzles_solved |= 0x04;
+                          UART_print("You route the wiring. The generator roars to life!\r\n");
+                          UART_print("Lights flicker on throughout the bunker.\r\n");
+                          UART_print("A radio console lights up in the corner.\r\n");
+                          UART_print("An automated distress beacon activates.\r\n\r\n");
+                          UART_print("You solved the Bunker puzzle!\r\n");
+                          gs.puzzle_step = 0;
+                          gs.active_puzzle = 0;
+                          gs.state = STATE_INVENTORY;
+                          gs.prev_state = STATE_BUNKER;
+                          UART_print("\r\nPress any key to continue...\r\n");
+                      }
+                  }
+                  else {
+                      // Wrong choice
+                      gs.health -= 10;
+                      gs.fear += 10;
+                      if (gs.health < 0) gs.health = 0;
+                      if (gs.fear > 100) gs.fear = 100;
+                      gs.puzzle_step = 0;
+                      if (c == '1' || c == '2') {
+                          UART_print("Sparks fly as the system shorts out.\r\n");
+                          UART_print("You were thrown back by the surge.\r\n");
+                      }
+                      else {
+                          UART_print("Something goes wrong. The generator sputters and dies.\r\n");
+                      }
+                      if (gs.difficulty == 0) {
+                          UART_print("Health and fear affected. Try again.\r\n");
+                          UART_print("Hint: Prime the fuel line first.\r\n");
+                      }
+                      else {
+                          UART_print("Health and fear affected. Try again.\r\n");
+                      }
+                      UART_print("Choose your first step (1/2/3):\r\n> ");
+                      check_death_conditions();
+                  }
+              }
+              break;
 
           default:
               break;
