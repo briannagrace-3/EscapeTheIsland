@@ -71,6 +71,7 @@ typedef struct { //keeps track of status variables
     uint8_t active_puzzle;      // 0=radio, 1=cave, 2=bunker
     GameStateEnum state;
     GameStateEnum prev_state;
+    uint32_t rng_seed;
 } GameState;
 
 /* USER CODE END PTD */
@@ -150,6 +151,12 @@ void show_bunker(void);
 void puzzle_radio(void);
 void puzzle_cave(void);
 void puzzle_bunker(void);
+void build_raft(void);
+void try_escape(void);
+void show_win(void);
+extern int8_t clamp(int32_t val, int32_t min, int32_t max);
+extern uint32_t asm_rng(uint32_t seed);
+uint32_t next_rand(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -159,7 +166,11 @@ void UART_print(const char *str){
 //define print function to make printing easier
     HAL_UART_Transmit(&huart2, (uint8_t *)str, strlen(str), 10);
 }
-
+uint32_t next_rand(void)
+{
+    gs.rng_seed = asm_rng(gs.rng_seed);
+    return gs.rng_seed;
+}
 void game_init(void){
     gs.health         = 100;
     gs.fear           = 0;
@@ -180,6 +191,7 @@ void game_init(void){
     memset(gs.inventory, 0, sizeof(gs.inventory));
     gs.state          = STATE_MAIN_MENU;
     gs.prev_state     = STATE_MAIN_MENU;
+    gs.rng_seed = 12345;
 }
 
 void show_main_menu(void){
@@ -249,7 +261,7 @@ void show_inventory(void){
 	UART_print("\r\nPress any key to continue...\r\n");
 }
 void search_wreckage(void){
-	uint8_t roll = (gs.day*37+gs.health+13)%3; //pseudo-random number generator (modified LCG)
+	uint8_t roll = next_rand()%3; //assembly rng
 	if (gs.searches_done >= 3) {
 	    UART_print("\r\nThe wreckage has been picked clean. Nothing left.\r\n");
 	}
@@ -288,9 +300,6 @@ void show_dialogue(uint8_t survivor){
 			if (gs.character == 0) {
 			    UART_print("\r\nEngineer: \"Another engineer? Good. Don't get in my way.\"\r\n");
 			}
-			else if (gs.flags & FLAG_FOUND_KEY){
-				UART_print(("\r\nEngineer: \"That key you found... I think it opens something near the bunker.\"\r\n"));
-			}
 			else if (gs.puzzles_solved & 0x01) {
 				UART_print("\r\nEngineer: \"Good work on the radio. We might actually get out of here.\"\r\n");
 			}
@@ -301,6 +310,9 @@ void show_dialogue(uint8_t survivor){
 				UART_print("Engineer: \"Red grounds the charge. Yellow is the warning wire.\"\r\n");
 				UART_print("Engineer: \"Green completes the loop. Get the order right or it'll short out.\"\r\n");
 			}
+			else if (gs.flags & FLAG_FOUND_KEY){ //only gives hint if on easy mode
+				UART_print(("\r\nEngineer: \"That key you found... I think it opens something near the bunker.\"\r\n"));
+						}
 			else {
 				UART_print("\r\nEngineer: \"If we can find a battery and some wire, I can fix the radio tower.\"\r\n");
 			}
@@ -421,7 +433,7 @@ void show_jungle(void){
     UART_print("\r\n> ");
 }
 void search_jungle(void){
-	uint8_t roll = (gs.day*17+7)%2; //gives 0 or 1
+	uint8_t roll = next_rand()%2; //gives 0 or 1
 	uint8_t item = roll+4; //Jungle items: items 4 & 5
 	if (gs.inventory[item]){
 		UART_print("\r\nYou search but find nothing new.\r\n");
@@ -493,7 +505,7 @@ void search_cave(void){
 }
 void cave_deeper(void){
 	gs.fear += 10;
-	if (gs.fear > 100) gs.fear = 100;
+	gs.fear = clamp(gs.fear, 0, 100);
 	UART_print("\r\nYou descend deeper into the cave.\r\n");
 	UART_print("The walls tighten around you. The air thins.\r\n");
 	UART_print("A chamber waits ahead, its only passage buried in rubble.\r\n");
@@ -517,10 +529,12 @@ void show_coastline(void){
     UART_print("  [5] Travel\r\n");
     UART_print("  [6] Rest (advance day)\r\n");
     UART_print("  [7] Read notes\r\n");
+    UART_print("  [8] Build Raft\r\n");
+    UART_print("  [9] Try to escape");
     UART_print("\r\n> ");
 }
 void search_shipwreck(void){
-    uint8_t roll = (gs.day * 23 + gs.fear + 11) % 2; // 0 or 1
+    uint8_t roll = next_rand() % 2; // 0 or 1
     if (gs.inventory[6] && gs.inventory[ITEM_MAP]) {
         UART_print("\r\nThe shipwreck has nothing left to offer.\r\n");
     }
@@ -544,7 +558,7 @@ void build_signal_fire(void){
     if (!(gs.flags & FLAG_FIRE_LIT)) {
         gs.flags |= FLAG_FIRE_LIT;
         gs.morale += 15;
-        if (gs.morale > 100) gs.morale = 100;
+        gs.morale = clamp(gs.morale, 0, 100);
         UART_print("\r\nYou gather driftwood and light a signal fire.\r\n");
         UART_print("Smoke rises into the sky. Someone might see it.\r\n");
         UART_print("Morale increased.\r\n");
@@ -557,7 +571,7 @@ void build_signal_fire(void){
     UART_print("\r\nPress any key to continue...\r\n");
 }
 void check_death_conditions(void){
-    if (gs.health <= 0) {
+    if (gs.health == 0) {
         gs.state = STATE_GAME_OVER;
         UART_print("\r\n##################################################\r\n");
         UART_print("#                                                #\r\n");
@@ -568,7 +582,7 @@ void check_death_conditions(void){
         UART_print("\r\nPress reset to play again.\r\n");
         while(1);
     }
-    if (gs.fear >= 100) {
+    if (gs.fear == 100) {
         gs.state = STATE_GAME_OVER;
         UART_print("\r\n##################################################\r\n");
         UART_print("#                                                #\r\n");
@@ -579,7 +593,7 @@ void check_death_conditions(void){
         UART_print("\r\nPress reset to play again.\r\n");
         while(1);
     }
-    if (gs.morale <= 0) {
+    if (gs.morale == 0) {
         gs.state = STATE_GAME_OVER;
         UART_print("\r\n##################################################\r\n");
         UART_print("#                                                #\r\n");
@@ -592,38 +606,39 @@ void check_death_conditions(void){
     }
 }
 void night_event(void){
-    uint8_t roll = (gs.day * 31 + gs.fear * 7 + gs.health * 3 + gs.morale) % 6;
+    uint8_t roll = next_rand()% 6;
     UART_print("\r\n-- Night falls --\r\n\r\n");
     switch(roll)
     {
         case 0: // Storm
             gs.fear += 15;
-            if (gs.fear > 100) gs.fear = 100;
+            gs.fear = clamp(gs.fear, 0, 100);
             UART_print("A violent storm rolls in. Lightning splits the sky.\r\n");
             UART_print("Fear increased.\r\n");
             break;
         case 1: // Animal attack
             gs.health -= 15;
             gs.fear += 10;
-            if (gs.fear > 100) gs.fear = 100;
+            gs.fear = clamp(gs.fear, 0, 100);
+            gs.health = clamp(gs.health, 0, 100);
             UART_print("Something attacks your camp in the night.\r\n");
             UART_print("You fight it off but take injuries.\r\n");
             UART_print("Health decreased. Fear increased.\r\n");
             break;
         case 2: // Footsteps
             gs.fear += 20;
-            if (gs.fear > 100) gs.fear = 100;
+            gs.fear = clamp(gs.fear, 0, 100);
             UART_print("You hear footsteps circling the camp.\r\n");
             UART_print("By morning, whoever it was is gone.\r\n");
             UART_print("Fear increased.\r\n");
             break;
         case 3: // Survivor missing
         {
-            uint8_t victim = (gs.day * 13 + gs.fear) % 4;
+            uint8_t victim = next_rand() % 4;
             gs.survivors[victim] = 0;
             gs.notes[victim] = 1;
             gs.morale -= 20;
-            if (gs.morale < 0) gs.morale = 0;
+            gs.morale = clamp(gs.morale, 0, 100);
             UART_print("You wake to find one of the survivors gone.\r\n");
             // each victim leaves a note
             switch(victim)
@@ -636,7 +651,7 @@ void night_event(void){
                     UART_print("You find a medical kit left behind with a note:\r\n");
                     UART_print("'Use this. Stay alive. --Medic'\r\n");
                     gs.health += 10;
-                    if (gs.health > 100) gs.health = 100;
+                    gs.health = clamp(gs.health, 0, 100);
                     break;
                 case 2:
                     UART_print("You find a note scratched into the sand:\r\n");
@@ -646,7 +661,7 @@ void night_event(void){
                     UART_print("You find a note:\r\n");
                     UART_print("'We were never getting off this island. --Skeptic'\r\n");
                     gs.morale -= 10;
-                    if (gs.morale < 0) gs.morale = 0;
+                    gs.morale = clamp(gs.morale, 0, 100);
                     break;
             }
             UART_print("Morale decreased.\r\n");
@@ -656,21 +671,21 @@ void night_event(void){
             if (gs.flags & FLAG_FIRE_LIT) {
                 gs.flags &= ~FLAG_FIRE_LIT;
                 gs.morale -= 10;
-                if (gs.morale < 0) gs.morale = 0;
+                gs.morale = clamp(gs.morale, 0, 100);
                 UART_print("The signal fire went out in the night.\r\n");
                 UART_print("Morale decreased.\r\n");
             }
             else {
                 UART_print("A quiet night. You sleep better than expected.\r\n");
                 gs.morale += 5;
-                if (gs.morale > 100) gs.morale = 100;
+                gs.morale = clamp(gs.morale, 0, 100);
             }
             break;
         case 5: // Peaceful night
             gs.morale += 10;
             gs.health += 5;
-            if (gs.morale > 100) gs.morale = 100;
-            if (gs.health > 100) gs.health = 100;
+            gs.morale = clamp(gs.morale, 0, 100);
+            gs.health = clamp(gs.health, 0, 100);
             UART_print("A rare peaceful night. The stars are beautiful.\r\n");
             UART_print("Health and morale increased.\r\n");
             break;
@@ -741,10 +756,14 @@ void show_bunker(void){
     UART_print("  [5] Travel\r\n");
     UART_print("\r\n> ");
 }
-void puzzle_radio(void)
-{
+void puzzle_radio(void){
+	if (gs.puzzles_solved & 0x01) {
+	    UART_print("\r\nThe radio is already transmitting a signal.\r\n");
+	    UART_print("\r\nPress any key to continue...\r\n");
+	    return;
+	}
     // Check required items
-    if (!gs.inventory[ITEM_BATTERY] || !gs.inventory[ITEM_WIRE] ||
+	else if (!gs.inventory[ITEM_BATTERY] || !gs.inventory[ITEM_WIRE] ||
         !gs.inventory[ITEM_TOOLS]   || !gs.inventory[ITEM_MAP]) {
         UART_print("\r\nYou don't have everything you need.\r\n");
         UART_print("Required: Battery, Wire, Tool Kit, Map\r\n");
@@ -788,7 +807,12 @@ void puzzle_radio(void)
     memset(gs.puzzle_input, 0, sizeof(gs.puzzle_input));
 }
 void puzzle_cave(void){
-    if (!(gs.flags & FLAG_FOUND_KEY)) {
+	if (gs.puzzles_solved & 0x02) {
+	    UART_print("\r\nThe passage is already clear.\r\n");
+	    UART_print("\r\nPress any key to continue...\r\n");
+	    return;
+	}
+	else if (!(gs.flags & FLAG_FOUND_KEY)) {
         UART_print("\r\nThe chamber is blocked. Search around some more, and try again later.\r\n");
         UART_print("\r\nPress any key to continue...\r\n");
         return;
@@ -816,7 +840,12 @@ void puzzle_cave(void){
     gs.state = STATE_PUZZLE;
 }
 void puzzle_bunker(void){
-    if (!gs.inventory[ITEM_BATTERY] || !gs.inventory[ITEM_WIRE]) {
+	if (gs.puzzles_solved & 0x04) {
+	    UART_print("\r\nThe generator is already running.\r\n");
+	    UART_print("\r\nPress any key to continue...\r\n");
+	    return;
+	}
+	else if (!gs.inventory[ITEM_BATTERY] || !gs.inventory[ITEM_WIRE]) {
         UART_print("\r\nThe generator needs power components.\r\n");
         UART_print("Required: Battery, Wire\r\n");
         UART_print("\r\nPress any key to continue...\r\n");
@@ -850,6 +879,101 @@ void puzzle_bunker(void){
     gs.puzzle_step = 0;
     gs.state = STATE_PUZZLE;
 }
+void build_raft(void)
+{
+    if (!gs.inventory[ITEM_ROPE] || !gs.inventory[ITEM_WOOD] ||
+        !gs.inventory[ITEM_KNIFE]) {
+        UART_print("\r\nYou need Rope, Wood, and a Knife to build a raft.\r\n");
+        UART_print("\r\nPress any key to continue...\r\n");
+        return;
+    }
+    if (gs.flags & FLAG_RAFT_BUILT) {
+        UART_print("\r\nThe raft is already built and waiting.\r\n");
+        UART_print("\r\nPress any key to continue...\r\n");
+        return;
+    }
+    if (!(gs.flags & FLAG_MET_SURVIVALIST)) {
+        UART_print("\r\nYou don't know how to build a raft alone.\r\n");
+        UART_print("Talk to the Survivalist first.\r\n");
+        UART_print("\r\nPress any key to continue...\r\n");
+        return;
+    }
+    gs.flags |= FLAG_RAFT_BUILT;
+    gs.morale += 20;
+    gs.morale = clamp(gs.morale, 0, 100);
+    UART_print("\r\nYou and the Survivalist spend the day building a raft.\r\n");
+    UART_print("It's rough but it'll hold.\r\n");
+    UART_print("Morale increased.\r\n");
+    gs.day++;
+    UART_print("\r\nPress any key to continue...\r\n");
+}
+void show_win(void)
+{
+    UART_print("\r\n");
+    UART_print("##################################################\r\n");
+    UART_print("#                                                #\r\n");
+    UART_print("#                 YOU ESCAPED                    #\r\n");
+    UART_print("#                                                #\r\n");
+    UART_print("##################################################\r\n");
+    UART_print("The radio signal brought the coordinates.\r\n");
+        UART_print("The bunker beacon confirmed your position.\r\n");
+        UART_print("The raft carried you to the rescue ship.\r\n\r\n");
+        UART_print("Every decision. Every risk. Every sleepless night.\r\n");
+        UART_print("It all led to this moment.\r\n\r\n");
+        UART_print("The survivors who remain stand with you on the deck.\r\n");
+        UART_print("Nobody speaks. Nobody needs to.\r\n\r\n");
+        UART_print("Days survived: ");
+        char daybuf[4];
+        daybuf[0] = '0' + (gs.day / 10);
+        daybuf[1] = '0' + (gs.day % 10);
+        daybuf[2] = '\0';
+        UART_print(daybuf);
+        UART_print("\r\n");
+        UART_print("\r\nSurvivors remaining: ");
+        uint8_t count = 0;
+        for (int i = 0; i < 4; i++) if (gs.survivors[i]) count++;
+        char countbuf[2] = {'0' + count, '\0'};
+        UART_print(countbuf);
+        UART_print("/4\r\n");
+        UART_print("\r\nPress reset to play again.\r\n");
+        while(1);
+}
+void try_escape(void){
+    // Check if all puzzles are solves
+    if (!(gs.puzzles_solved & 0x01)) {
+        UART_print("\r\nThe radio tower isn't fixed yet.\r\n");
+        UART_print("\r\nPress any key to continue...\r\n");
+        return;
+    }
+    if (!(gs.puzzles_solved & 0x02)) {
+        UART_print("\r\nThe cave passage is still blocked.\r\n");
+        UART_print("\r\nPress any key to continue...\r\n");
+        return;
+    }
+    if (!(gs.puzzles_solved & 0x04)) {
+        UART_print("\r\nThe bunker generator isn't running.\r\n");
+        UART_print("\r\nPress any key to continue...\r\n");
+        return;
+    }
+    // Check if raft built
+    if (!(gs.flags & FLAG_RAFT_BUILT)) {
+        UART_print("\r\nYou haven't built the raft yet.\r\n");
+        UART_print("Required: Rope, Wood, Knife\r\n");
+        UART_print("\r\nPress any key to continue...\r\n");
+        return;
+    }
+    // Check morale
+    uint8_t morale_threshold = (gs.difficulty == 0) ? 30 : 50;
+    if (gs.morale < morale_threshold) {
+        UART_print("\r\nThe group has lost the will to escape.\r\n");
+        UART_print("Morale is too low. Rally the survivors first.\r\n");
+        UART_print("\r\nPress any key to continue...\r\n");
+        return;
+    }
+    show_win();
+}
+
+
 /* USER CODE END 0 */
 
 /**
@@ -1120,9 +1244,20 @@ int main(void)
         	      night_event();
         	  }
         	      else if (c == '7') {
-        	      gs.prev_state = gs.state;
+        	      gs.prev_state = STATE_COASTLINE;
         	      gs.state = STATE_INVENTORY;
         	      show_notes();
+        	  }
+        	      else if ( c == '8'){
+        	    	  gs.prev_state = STATE_COASTLINE;
+        	    	  gs.state = STATE_INVENTORY;
+        	    	  build_raft();
+
+        	  }
+        	      else if (c == '9'){
+        	    	  gs.prev_state = STATE_COASTLINE;
+        	    	  gs.state = STATE_INVENTORY;
+        	    	  try_escape();
         	  }
         	  break;
           case STATE_TOWER:
