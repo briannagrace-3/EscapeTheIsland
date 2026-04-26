@@ -4,20 +4,7 @@
   * @file           : main.c
   * @brief          : Escape the Island — Text RPG
   ******************************************************************************
-  * @attention
-  *
-  * This game presents the user with a math question. It is played over the serial interface.
-  * The user can reset the game with the on-board reset button of the NUCLEO board.
   * Baud Rate = 115200
-  *
-  * Copyright (c) 2023 STMicroelectronics.
-  * Copyright (c) 2023 Dr. Billy Kihei, for CPE 2200
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
   ******************************************************************************
   */
 /* USER CODE END Header */
@@ -44,10 +31,8 @@ typedef enum { //keeps track of state
 	STATE_JUNGLE,
 	STATE_CAVE,
 	STATE_COASTLINE,
-    STATE_NIGHT_EVENT,
 	STATE_TOWER,
 	STATE_BUNKER,
-    STATE_WIN,
     STATE_GAME_OVER
 } GameStateEnum;
 
@@ -143,6 +128,7 @@ void cave_deeper(void);
 void show_coastline(void);
 void search_shipwreck(void);
 void build_signal_fire(void);
+void show_ascii_game_over(void);
 void check_death_conditions(void);
 void night_event(void);
 void show_notes(void);
@@ -153,7 +139,10 @@ void puzzle_cave(void);
 void puzzle_bunker(void);
 void build_raft(void);
 void try_escape(void);
+void show_ascii_win(void);
 void show_win(void);
+void show_stats(void);
+void demo_cheats(void);
 extern int8_t clamp(int32_t val, int32_t min, int32_t max);
 extern uint32_t asm_rng(uint32_t seed);
 uint32_t next_rand(void);
@@ -172,36 +161,56 @@ uint32_t next_rand(void)
     return gs.rng_seed;
 }
 void game_init(void){
-    gs.health         = 100;
-    gs.fear           = 0;
+	gs.health         = 100;
+	gs.fear           = 0;
     gs.morale         = 75;
     gs.starvation     = 0;
     gs.character      = 0;
     gs.difficulty     = 0;
     gs.location       = 0;
     gs.day            = 1;
-    memset(gs.survivors, 1, sizeof(gs.survivors));
-    memset(gs.notes, 0, sizeof(gs.notes));
     gs.flags          = 0;
     gs.puzzles_solved = 0;
-    gs.puzzle_step  = 0;
-    gs.active_puzzle = 0;
-    memset(gs.puzzle_input, 0, sizeof(gs.puzzle_input));
+    gs.puzzle_step    = 0;
+    gs.active_puzzle  = 0;
     gs.searches_done  = 0;
+	gs.rng_seed       = 12345;
+    memset(gs.survivors, 1, sizeof(gs.survivors));
+    memset(gs.notes, 0, sizeof(gs.notes));
+    memset(gs.puzzle_input, 0, sizeof(gs.puzzle_input));
     memset(gs.inventory, 0, sizeof(gs.inventory));
     gs.state          = STATE_MAIN_MENU;
     gs.prev_state     = STATE_MAIN_MENU;
-    gs.rng_seed = 12345;
+
 }
 
-void show_main_menu(void){
+void show_main_menu(void)
+{
     UART_print("\r\n");
-    UART_print("##################################################\r\n");
-    UART_print("#                                                #\r\n");
-    UART_print("#           ESCAPE THE ISLAND                    #\r\n");
-    UART_print("#                                                #\r\n");
-    UART_print("#                                                #\r\n");
-    UART_print("##################################################\r\n");
+    UART_print("'########::'######:::'######:::::'###::::'########::'########:\r\n");
+    UART_print(" ##.....::'##... ##:'##... ##:::'## ##::: ##.... ##: ##.....::\r\n");
+    UART_print(" ##::::::: ##:::..:: ##:::..:::'##:. ##:: ##:::: ##: ##:::::::\r\n");
+    UART_print(" ######:::. ######:: ##:::::::'##:::. ##: ########:: ######:::\r\n");
+    UART_print(" ##...:::::..... ##: ##::::::: #########: ##.....::: ##...::::\r\n");
+    UART_print(" ##:::::::'##::: ##: ##::: ##: ##.... ##: ##:::::::: ##:::::::\r\n");
+    UART_print(" ########:. ######::. ######:: ##:::: ##: ##:::::::: ########:\r\n");
+    UART_print("........:::......::::......:::..:::::..::..:::::::::........::\r\n");
+    UART_print("'########:'##::::'##:'########::::\r\n");
+    UART_print("... ##..:: ##:::: ##: ##.....::::::\r\n");
+    UART_print("::: ##:::: ##:::: ##: ##::::::::::\r\n");
+    UART_print("::: ##:::: #########: ######::::::\r\n");
+    UART_print("::: ##:::: ##.... ##: ##...::::::::\r\n");
+    UART_print("::: ##:::: ##:::: ##: ##::::::::::\r\n");
+    UART_print("::: ##:::: ##:::: ##: ########::::\r\n");
+    UART_print(":::..:::::..:::::..::........:::::\r\n");
+    UART_print("'####::'######::'##::::::::::'###::::'##::: ##:'########::\r\n");
+    UART_print(". ##::'##... ##: ##:::::::::'## ##::: ###:: ##: ##.... ##:\r\n");
+    UART_print(": ##:: ##:::..:: ##::::::::'##:. ##:: ####: ##: ##:::: ##:\r\n");
+    UART_print(": ##::. ######:: ##:::::::'##:::. ##: ## ## ##: ##:::: ##:\r\n");
+    UART_print(": ##:::..... ##: ##::::::: #########: ##. ####: ##:::: ##:\r\n");
+    UART_print(": ##::'##::: ##: ##::::::: ##.... ##: ##:. ###: ##:::: ##:\r\n");
+    UART_print("'####:. ######:: ########: ##:::: ##: ##::. ##: ########::\r\n");
+    UART_print("....:::......:::........::..:::::..::..::::..::........:::\r\n");
     UART_print("\r\n");
     UART_print("  [P] Play\r\n");
     UART_print("  [X] Exit\r\n");
@@ -220,7 +229,7 @@ void show_char_select(void){
 void show_diff_select(void){
     UART_print("\r\n-- Choose difficulty --\r\n\r\n");
     UART_print("  [E] Easy - hints enabled, more resources\r\n");
-    UART_print("  [H] Hard - no hints, scarce resources\r\n");
+    UART_print("  [H] Hard - fewer hints, lower health, lower morale\r\n");
     UART_print("\r\n> ");
 }
 
@@ -240,6 +249,7 @@ void show_explore(void){
     UART_print("  [5] Rest (advance day)\r\n");
     UART_print("  [6] Travel to another location\r\n");
     UART_print("  [7] Read notes\r\n");
+    UART_print("  [8] Check stats\r\n");
     UART_print("\r\n> ");
 }
 void show_inventory(void){
@@ -262,7 +272,7 @@ void show_inventory(void){
 }
 void search_wreckage(void){
 	uint8_t roll = next_rand()%3; //assembly rng
-	if (gs.searches_done >= 3) {
+	if (gs.inventory[ITEM_BATTERY] && gs.inventory[ITEM_WIRE] && gs.inventory[ITEM_TOOLS]) {
 	    UART_print("\r\nThe wreckage has been picked clean. Nothing left.\r\n");
 	}
 	else if (gs.inventory[roll]){
@@ -303,16 +313,16 @@ void show_dialogue(uint8_t survivor){
 			else if (gs.puzzles_solved & 0x01) {
 				UART_print("\r\nEngineer: \"Good work on the radio. We might actually get out of here.\"\r\n");
 			}
-			else if ((gs.difficulty == 1) && FLAG_FOUND_KEY) {
+			else if ((gs.difficulty == 1) && (gs.flags & FLAG_FOUND_KEY)) {
 				gs.flags |= FLAG_ENGINEER_HINT;
 				UART_print("\r\nEngineer: \"If we can find a battery and some wire, I can fix the radio tower.\"\r\n");
 				UART_print("Engineer: \"The panel has four wires. Blue carries the signal.\"\r\n");
 				UART_print("Engineer: \"Red grounds the charge. Yellow is the warning wire.\"\r\n");
 				UART_print("Engineer: \"Green completes the loop. Get the order right or it'll short out.\"\r\n");
 			}
-			else if (gs.flags & FLAG_FOUND_KEY){ //only gives hint if on easy mode
+			else if ((gs.difficulty == 0) && (gs.flags & FLAG_FOUND_KEY)){ //only gives hint if on easy mode
 				UART_print(("\r\nEngineer: \"That key you found... I think it opens something near the bunker.\"\r\n"));
-						}
+			}
 			else {
 				UART_print("\r\nEngineer: \"If we can find a battery and some wire, I can fix the radio tower.\"\r\n");
 			}
@@ -324,7 +334,7 @@ void show_dialogue(uint8_t survivor){
 			}
 			else {
 				gs.health += 10; //medic undoes damage
-				if (gs.health >100) gs.health = 100; //limit health to 100
+				gs.health = clamp(gs.health, 0, 100);//limit health to 100
 				UART_print("\r\nMedic: \"Hold still... I'll patch you up.\"\r\n");
 				UART_print("Your health increased.\r\n");
 			}
@@ -332,7 +342,7 @@ void show_dialogue(uint8_t survivor){
 		case 2: //Survivalist
 			gs.flags |= FLAG_MET_SURVIVALIST;
 			if (gs.character == 2){
-				UART_print("\r\nSurvivalist: \"You know as well as I do.. jungle has rope and wood. Stop wasting time.\"\r\n");
+				UART_print("\r\nSurvivalist: \"You know as well as I do.. jungle has rope and wood. Stop wasting time. We need to build a raft.\"\r\n");
 			}
 			else if (gs.flags & FLAG_RAFT_BUILT){
 				UART_print("\r\nSurvivalist: \"The raft is ready. Say the word and we leave.\"\r\n");
@@ -348,7 +358,7 @@ void show_dialogue(uint8_t survivor){
 		    }
 		    else {
 		        gs.morale -= 10;
-		        if (gs.morale < 0) gs.morale = 0;
+		        gs.morale = clamp(gs.morale, 0, 100);
 		        UART_print("\r\nSkeptic: \"Nobody is coming for us. We're going to die here.\"\r\n");
 		        UART_print("Morale decreased.\r\n");
 		        }
@@ -361,42 +371,49 @@ void show_map(void)
     UART_print("  ==========================================\r\n");
     UART_print("              I S L A N D   M A P\r\n");
     UART_print("  ==========================================\r\n");
-
     UART_print("\r\n    ");
-    UART_print(gs.location == 1 ? "[JUNGLE*]" : "[JUNGLE] ");
+    uint8_t jungle_has_items = (!gs.inventory[ITEM_ROPE] || !gs.inventory[ITEM_WOOD]);
+    UART_print(gs.location == 1 ? "[JUNGLE*" : "[JUNGLE");
+    UART_print(jungle_has_items ? "!]" : "]");
     UART_print("----------");
-    UART_print(gs.location == 4 ? "[TOWER*] " : "[TOWER]  ");
+    UART_print(gs.location == 4 ? "[TOWER*]" : "[TOWER] ");
     UART_print("\r\n");
-
     UART_print("        |                    |\r\n");
     UART_print("        |      (ISLAND)      |\r\n");
     UART_print("        |                    |\r\n");
-
     UART_print("    ");
-    UART_print(gs.location == 0 ? "[BEACH*] " : "[BEACH]  ");
+    uint8_t beach_has_items = (!gs.inventory[ITEM_BATTERY] || !gs.inventory[ITEM_WIRE] || !gs.inventory[ITEM_TOOLS]);
+    UART_print(gs.location == 0 ? "[BEACH* " : "[BEACH");
+    UART_print(beach_has_items ? "!]" : " ]");
     UART_print("----");
-    UART_print(gs.location == 3 ? "[COAST*] " : "[COAST]  ");
+    uint8_t coast_has_items = (!gs.inventory[ITEM_KNIFE] || !gs.inventory[ITEM_MAP]);
+    UART_print(gs.location == 3 ? "[COAST*" : "[COAST");
+    UART_print(coast_has_items ? "!]" : "]");
     UART_print("----");
-    UART_print(gs.location == 2 ? "[CAVE*]  " : "[CAVE]   ");
+    uint8_t cave_has_items = (!gs.inventory[ITEM_KEY]);
+    UART_print(gs.location == 2 ? "[CAVE*" : "[CAVE");
+    UART_print(cave_has_items ? "!]" : "]");
     UART_print("\r\n");
-
     UART_print("                             |\r\n");
     UART_print("                         ");
     UART_print(gs.location == 5 ? "[BUNKER*]" : "[BUNKER] ");
     UART_print("\r\n");
-
     UART_print("\r\n  ==========================================\r\n");
-
+    UART_print("  * = you are here\r\n");
+    UART_print("  ! = items available\r\n");
+    UART_print("  ==========================================\r\n");
     const char *loc_names[6] = {
         "BEACH", "JUNGLE", "CAVE", "COASTLINE", "RADIO TOWER", "BUNKER"
     };
     UART_print("  Location : ");
     UART_print(loc_names[gs.location]);
     UART_print("\r\n  Day      : ");
-    char daybuf[3] = {'0' + gs.day, '\0'};
+    char daybuf[4];
+    daybuf[0] = '0' + (gs.day / 10);
+    daybuf[1] = '0' + (gs.day % 10);
+    daybuf[2] = '\0';
     UART_print(daybuf);
-    UART_print("\r\n  * = you are here\r\n");
-    UART_print("  ==========================================\r\n");
+    UART_print("\r\n  ==========================================\r\n");
     UART_print("\r\nPress any key to continue...\r\n");
 }
 void show_travel_menu(void){
@@ -430,6 +447,7 @@ void show_jungle(void){
     UART_print("  [5] Travel\r\n");
     UART_print("  [6] Rest (advance day)\r\n");
     UART_print("  [7] Read notes\r\n");
+    UART_print("  [8] Check stats\r\n");
     UART_print("\r\n> ");
 }
 void search_jungle(void){
@@ -448,17 +466,19 @@ void search_jungle(void){
 	gs.day++;
 	UART_print("\r\nPress any key to continue...\r\n");
 }
-void hunt_jungle(void){
-	if(gs.starvation > 20){
-		gs.starvation -=20;
-		UART_print("\r\nYou catch a small animal.\r\n");
-		UART_print("Starvation decreased.\r\n");
-	}
-	else {
-		UART_print("\r\nYou find nothing. Better luck next time.");
-	}
-	gs.day++;
-	UART_print("\r\nPress any key to continue...\r\n");
+void hunt_jungle(void)
+{
+    uint8_t roll = next_rand() % 3; // 0,1 = success, 2 = nothing
+    if (roll < 2) {
+        gs.starvation -= 20;
+        gs.starvation = clamp(gs.starvation, 0, 100);
+        UART_print("\r\nYou catch a small animal and eat well.\r\n");
+        UART_print("Starvation decreased.\r\n");
+    } else {
+        UART_print("\r\nYou find nothing to hunt today.\r\n");
+    }
+    gs.day++;
+    UART_print("\r\nPress any key to continue...\r\n");
 }
 void show_current_location(void){
     switch(gs.location){
@@ -488,6 +508,7 @@ void show_cave(void){
 	UART_print("  [5] Travel\r\n");
 	UART_print("  [6] Rest (advance day)\r\n");
 	UART_print("  [7] Read notes\r\n");
+	UART_print("  [8] Check stats\r\n");
 	UART_print("\r\n> ");
 }
 void search_cave(void){
@@ -527,10 +548,10 @@ void show_coastline(void){
     UART_print("  [3] View map\r\n");
     UART_print("  [4] View inventory\r\n");
     UART_print("  [5] Travel\r\n");
-    UART_print("  [6] Rest (advance day)\r\n");
-    UART_print("  [7] Read notes\r\n");
-    UART_print("  [8] Build Raft\r\n");
-    UART_print("  [9] Try to escape");
+    UART_print("  [6] Read notes\r\n");
+    UART_print("  [7] Build Raft\r\n");
+    UART_print("  [8] Try to escape\r\n");
+    UART_print("  [9] Check stats\r\n");
     UART_print("\r\n> ");
 }
 void search_shipwreck(void){
@@ -570,38 +591,47 @@ void build_signal_fire(void){
     gs.day++;
     UART_print("\r\nPress any key to continue...\r\n");
 }
+void show_ascii_game_over(void)
+{
+    UART_print("\r\n");
+    UART_print(":'######::::::'###::::'##::::'##:'########:\r\n");
+    UART_print("'##... ##::::'## ##::: ###::'###: ##.....::\r\n");
+    UART_print(" ##:::..::::'##:. ##:: ####'####: ##:::::::\r\n");
+    UART_print(" ##::'####:'##:::. ##: ## ### ##: ######:::\r\n");
+    UART_print(" ##::: ##:: #########: ##. #: ##: ##...::::\r\n");
+    UART_print(" ##::: ##:: ##.... ##: ##:.:: ##: ##:::::::\r\n");
+    UART_print(". ######::: ##:::: ##: ##:::: ##: ########:\r\n");
+    UART_print(":......::::..:::::..::..:::::..::........::\r\n");
+    UART_print(":'#######::'##::::'##:'########:'########::\r\n");
+    UART_print("'##.... ##: ##:::: ##: ##.....::: ##.... ##:\r\n");
+    UART_print(" ##:::: ##: ##:::: ##: ##::::::::: ##:::: ##:\r\n");
+    UART_print(" ##:::: ##: ##:::: ##: ######::::: ########::\r\n");
+    UART_print(" ##:::: ##:. ##:: ##:: ##...:::::: ##.. ##:::\r\n");
+    UART_print(" ##:::: ##::. ## ##::: ##::::::::: ##::. ##::\r\n");
+    UART_print(". #######::::. ###:::: ########::: ##:::. ##:\r\n");
+    UART_print(":.......::::::...:::::........::::..:::::..:\r\n");
+    UART_print("\r\n");
+}
 void check_death_conditions(void){
-    if (gs.health == 0) {
-        gs.state = STATE_GAME_OVER;
-        UART_print("\r\n##################################################\r\n");
-        UART_print("#                                                #\r\n");
-        UART_print("#                 YOU DIED                       #\r\n");
-        UART_print("#         Your injuries were too severe.         #\r\n");
-        UART_print("#                                                #\r\n");
-        UART_print("##################################################\r\n");
-        UART_print("\r\nPress reset to play again.\r\n");
+    if (gs.health <= 0) {
+        UART_print("YOU DIED. \r\n");
+        UART_print("Your injuries were too severe.\r\n");
+        UART_print("Press reset to play again.\r\n");
+        show_ascii_game_over();
         while(1);
     }
-    if (gs.fear == 100) {
-        gs.state = STATE_GAME_OVER;
-        UART_print("\r\n##################################################\r\n");
-        UART_print("#                                                #\r\n");
-        UART_print("#            PSYCHOLOGICAL COLLAPSE              #\r\n");
-        UART_print("#     The island broke you. You gave up.         #\r\n");
-        UART_print("#                                                #\r\n");
-        UART_print("##################################################\r\n");
-        UART_print("\r\nPress reset to play again.\r\n");
+    if (gs.fear >= 100) {
+        UART_print("PSYCHOLOGICAL COLLAPSE. \r\n");
+        UART_print("The island broke you. You gave up.\r\n");
+        UART_print("Press reset to play again.\r\n");
+        show_ascii_game_over();
         while(1);
     }
-    if (gs.morale == 0) {
-        gs.state = STATE_GAME_OVER;
-        UART_print("\r\n##################################################\r\n");
-        UART_print("#                                                #\r\n");
-        UART_print("#               ABANDONED                        #\r\n");
-        UART_print("#   The group fell apart. You were left behind.  #\r\n");
-        UART_print("#                                                #\r\n");
-        UART_print("##################################################\r\n");
-        UART_print("\r\nPress reset to play again.\r\n");
+    if (gs.morale <= 0) {
+        UART_print("ABANDONED \r\n");
+        UART_print("The group fell apart. You were left behind.\r\n");
+        UART_print("Press reset to play again.\r\n");
+        show_ascii_game_over();
         while(1);
     }
 }
@@ -738,6 +768,7 @@ void show_tower(void){
     UART_print("  [3] View inventory\r\n");
     UART_print("  [4] Read notes\r\n");
     UART_print("  [5] Travel\r\n");
+    UART_print("  [6] Check stats\r\n");
     UART_print("\r\n> ");
 }
 void show_bunker(void){
@@ -754,6 +785,7 @@ void show_bunker(void){
     UART_print("  [3] View inventory\r\n");
     UART_print("  [4] Read notes\r\n");
     UART_print("  [5] Travel\r\n");
+    UART_print("  [6] Check stats\r\n");
     UART_print("\r\n> ");
 }
 void puzzle_radio(void){
@@ -768,6 +800,8 @@ void puzzle_radio(void){
         UART_print("\r\nYou don't have everything you need.\r\n");
         UART_print("Required: Battery, Wire, Tool Kit, Map\r\n");
         UART_print("\r\nPress any key to continue...\r\n");
+        gs.state = STATE_INVENTORY;
+        gs.prev_state = STATE_TOWER;
         return;
     }
 
@@ -785,7 +819,7 @@ void puzzle_radio(void){
     	    	UART_print("  - The wire that grounds the charge follows immediately.\r\n");
     	    	UART_print("  - The warning wire comes third.\r\n");
     	    	UART_print("  - The wire that completes the loop is last.\r\n\r\n");
-    	    	UART_print(" You recall that blue carries the signal, yellow is the warning wire, and red grounds the charge");
+    	    	UART_print(" You recall that blue carries the signal, yellow is the warning wire, and red grounds the charge\r\n");
     	    	}
         else if (gs.flags & FLAG_ENGINEER_HINT) {
     	        UART_print("  - The wire that carries the signal starts the circuit.\r\n");
@@ -815,6 +849,8 @@ void puzzle_cave(void){
 	else if (!(gs.flags & FLAG_FOUND_KEY)) {
         UART_print("\r\nThe chamber is blocked. Search around some more, and try again later.\r\n");
         UART_print("\r\nPress any key to continue...\r\n");
+        gs.state = STATE_INVENTORY;
+        gs.prev_state = STATE_CAVE;
         return;
     }
     UART_print("\r\n== CAVE PUZZLE ==\r\n");
@@ -823,14 +859,14 @@ void puzzle_cave(void){
     UART_print("Three piles block the way: A, B, and C.\r\n\r\n");
     if (gs.difficulty == 0) {
     	UART_print("A quick inspection reveals:\r\n");
-    	UART_print("  - Pile C is not structurally connected to the base layer, but it is locked by the stability of A.\r\n");
+    	UART_print("  - Pile C is behind Pile A.\r\n");
     	UART_print("  - Pile B is blocking access to Pile A.\r\n");
     	UART_print("  - Pile A must be cleared before anything behind it can shift.\r\n");
     }
     else {
         UART_print("The air grows thinner with every second you hesitate.\r\n");
         UART_print("The structural integrity is critical:\r\n");
-        UART_print("  - Pile C is immovable while Pile A maintains its current tension.\r\n");
+        UART_print("  - Pile C is immovable while Pile A is in its current location.\r\n");
         UART_print("  - Pile A is structurally braced by the position of Pile B.\r\n");
         UART_print("  - Pile B is the only mass currently free of external load.\r\n\r\n");
     }
@@ -849,6 +885,8 @@ void puzzle_bunker(void){
         UART_print("\r\nThe generator needs power components.\r\n");
         UART_print("Required: Battery, Wire\r\n");
         UART_print("\r\nPress any key to continue...\r\n");
+        gs.state = STATE_INVENTORY;
+        gs.prev_state = STATE_BUNKER;
         return;
     }
     UART_print("\r\n== BUNKER PUZZLE ==\r\n");
@@ -907,36 +945,51 @@ void build_raft(void)
     gs.day++;
     UART_print("\r\nPress any key to continue...\r\n");
 }
-void show_win(void)
+void show_ascii_win(void)
 {
     UART_print("\r\n");
-    UART_print("##################################################\r\n");
-    UART_print("#                                                #\r\n");
-    UART_print("#                 YOU ESCAPED                    #\r\n");
-    UART_print("#                                                #\r\n");
-    UART_print("##################################################\r\n");
+    UART_print("'##:::'##::'#######::'##::::'##::::\r\n");
+    UART_print(". ##:'##::'##.... ##: ##:::: ##::::\r\n");
+    UART_print(":. ####::: ##:::: ##: ##:::: ##::::\r\n");
+    UART_print("::. ##:::: ##:::: ##: ##:::: ##::::\r\n");
+    UART_print("::: ##:::: ##:::: ##: ##:::: ##::::\r\n");
+    UART_print("::: ##:::: ##:::: ##: ##:::: ##::::\r\n");
+    UART_print("::: ##::::. #######::. #######:::::\r\n");
+    UART_print(":::..::::::.......::::.......:::::\r\n");
+    UART_print("'##:::::'##::'#######::'##::: ##:\r\n");
+    UART_print(" ##:'##: ##:'##.... ##: ###:: ##:\r\n");
+    UART_print(" ##: ##: ##: ##:::: ##: ####: ##:\r\n");
+    UART_print(" ##: ##: ##: ##:::: ##: ## ## ##:\r\n");
+    UART_print(" ##: ##: ##: ##:::: ##: ##. ####:\r\n");
+    UART_print(" ##: ##: ##: ##:::: ##: ##:. ###:\r\n");
+    UART_print(". ###. ###::. #######:: ##::. ##:\r\n");
+    UART_print(":...::...::::.......:::..::::..:\r\n");
+    UART_print("\r\n");
+}
+void show_win(void){
+    show_ascii_win();
     UART_print("The radio signal brought the coordinates.\r\n");
-        UART_print("The bunker beacon confirmed your position.\r\n");
-        UART_print("The raft carried you to the rescue ship.\r\n\r\n");
-        UART_print("Every decision. Every risk. Every sleepless night.\r\n");
-        UART_print("It all led to this moment.\r\n\r\n");
-        UART_print("The survivors who remain stand with you on the deck.\r\n");
-        UART_print("Nobody speaks. Nobody needs to.\r\n\r\n");
-        UART_print("Days survived: ");
-        char daybuf[4];
-        daybuf[0] = '0' + (gs.day / 10);
-        daybuf[1] = '0' + (gs.day % 10);
-        daybuf[2] = '\0';
-        UART_print(daybuf);
-        UART_print("\r\n");
-        UART_print("\r\nSurvivors remaining: ");
-        uint8_t count = 0;
-        for (int i = 0; i < 4; i++) if (gs.survivors[i]) count++;
-        char countbuf[2] = {'0' + count, '\0'};
-        UART_print(countbuf);
-        UART_print("/4\r\n");
-        UART_print("\r\nPress reset to play again.\r\n");
-        while(1);
+    UART_print("The bunker beacon confirmed your position.\r\n");
+    UART_print("The raft carried you to the rescue ship.\r\n\r\n");
+    UART_print("Every decision. Every risk. Every sleepless night.\r\n");
+    UART_print("It all led to this moment.\r\n\r\n");
+    UART_print("The survivors who remain stand with you on the deck.\r\n");
+    UART_print("Nobody speaks. Nobody needs to.\r\n\r\n");
+    UART_print("Days survived: ");
+    char daybuf[4];
+    daybuf[0] = '0' + (gs.day / 10);
+    daybuf[1] = '0' + (gs.day % 10);
+    daybuf[2] = '\0';
+    UART_print(daybuf);
+    UART_print("\r\n");
+    UART_print("\r\nSurvivors remaining: ");
+    uint8_t count = 0;
+    for (int i = 0; i < 4; i++) if (gs.survivors[i]) count++;
+    char countbuf[2] = {'0' + count, '\0'};
+    UART_print(countbuf);
+    UART_print("/4\r\n");
+    UART_print("\r\nPress reset to play again.\r\n");
+    while(1);
 }
 void try_escape(void){
     // Check if all puzzles are solves
@@ -972,7 +1025,64 @@ void try_escape(void){
     }
     show_win();
 }
+void show_stats(void)
+{
+    UART_print("\r\n-- Survivor Status --\r\n\r\n");
+    UART_print("  Health     : ");
+    char buf[4];
+    if (gs.health >= 100) {
+        UART_print("100");
+    } else {
+        buf[0] = '0' + (gs.health / 10);
+        buf[1] = '0' + (gs.health % 10);
+        buf[2] = '\0';
+        UART_print(buf);
+    }
+    UART_print("/100\r\n");
+    UART_print("  Fear       : ");
+    buf[0] = '0' + (gs.fear / 10);
+    buf[1] = '0' + (gs.fear % 10);
+    UART_print(buf);
+    UART_print("/100\r\n");
+    UART_print("  Morale     : ");
+    buf[0] = '0' + (gs.morale / 10);
+    buf[1] = '0' + (gs.morale % 10);
+    UART_print(buf);
+    UART_print("/100\r\n");
+    UART_print("  Starvation : ");
+    buf[0] = '0' + (gs.starvation / 10);
+    buf[1] = '0' + (gs.starvation % 10);
+    UART_print(buf);
+    UART_print("/100\r\n");
+    UART_print("  Day        : ");
+    buf[0] = '0' + (gs.day / 10);
+    buf[1] = '0' + (gs.day % 10);
+    UART_print(buf);
+    UART_print("\r\n");
+    UART_print("\r\n-- Survivors Present --\r\n");
+    if (gs.survivors[0]) UART_print("  Engineer\r\n");
+    if (gs.survivors[1]) UART_print("  Medic\r\n");
+    if (gs.survivors[2]) UART_print("  Survivalist\r\n");
+    if (gs.survivors[3]) UART_print("  Skeptic\r\n");
 
+    UART_print("\r\nPress any key to continue...\r\n");
+}
+void demo_cheats(void){
+	for (int i=0; i<8; i++){
+		gs.inventory[i]=1;
+	}
+	gs.flags |= FLAG_FOUND_KEY;
+	gs.flags |= FLAG_MET_SKEPTIC;
+	gs.flags |= FLAG_MET_SURVIVALIST;
+	gs.flags |= FLAG_MET_MEDIC;
+	gs.flags |=FLAG_MET_ENGINEER;
+	gs.flags |= FLAG_ENGINEER_HINT;
+	gs.flags |= FLAG_FIRE_LIT;
+	gs.flags |= FLAG_RAFT_BUILT;
+	UART_print("\r\nAll items have been found.\r\n");
+	UART_print("All characters have been met. \r\n");
+	UART_print("All puzzles have been unlocked\r\n");
+}
 
 /* USER CODE END 0 */
 
@@ -1048,6 +1158,9 @@ int main(void)
                   show_explore();
               } else if (c == 'h' || c == 'H') {
                   gs.difficulty = 1;
+                  gs.health = 75;
+                  gs.morale = 50;
+                  gs.fear   = 10;
                   gs.state = STATE_EXPLORE;
                   show_explore();
               }
@@ -1075,7 +1188,7 @@ int main(void)
 
         	  }
         	  else if (c == '5') {
-        		  gs.prev_state = gs.state;
+        		  gs.prev_state = STATE_EXPLORE;
         		  gs.state = STATE_INVENTORY;
         		  gs.day++;
         		  night_event();
@@ -1088,6 +1201,16 @@ int main(void)
         		  gs.prev_state = STATE_EXPLORE;
         		  gs.state = STATE_INVENTORY;
         		  show_notes();
+        	  }
+        	  else if (c == '8'){
+        		  gs.prev_state = STATE_EXPLORE;
+        		  gs.state = STATE_INVENTORY;
+        		  show_stats();
+        	  }
+        	  else if (c == 'd'){
+        		  gs.prev_state = STATE_EXPLORE;
+        		  gs.state = STATE_INVENTORY;
+        		  demo_cheats();
         	  }
               break;
           case STATE_INVENTORY:
@@ -1164,15 +1287,20 @@ int main(void)
         		  show_travel_menu();
         	  }
         	  else if (c == '6') {
-        	      gs.prev_state = gs.state;
+        	      gs.prev_state = STATE_JUNGLE;
         	      gs.state = STATE_INVENTORY;
         	      gs.day++;
         	      night_event();
         	  }
         	  else if (c == '7') {
-        	      gs.prev_state = gs.state;
+        	      gs.prev_state = STATE_JUNGLE;
         	      gs.state = STATE_INVENTORY;
         	      show_notes();
+        	  }
+        	  else if (c == '8'){
+        	      gs.prev_state = STATE_JUNGLE;
+        	      gs.state = STATE_INVENTORY;
+        	      show_stats();
         	  }
         	  break;
           case STATE_CAVE:
@@ -1201,15 +1329,20 @@ int main(void)
         		  show_travel_menu();
         	  }
         	  else if (c == '6') {
-        	       gs.prev_state = gs.state;
+        	       gs.prev_state = STATE_CAVE;
         	       gs.state = STATE_INVENTORY;
         	       gs.day++;
         	       night_event();
         	  }
         	  else if (c == '7') {
-        	       gs.prev_state = gs.state;
+        	       gs.prev_state = STATE_CAVE;
         	       gs.state = STATE_INVENTORY;
         	       show_notes();
+        	  }
+        	  else if (c == '8'){
+        	       gs.prev_state = STATE_CAVE;
+           		   gs.state = STATE_INVENTORY;
+        	       show_stats();
         	  }
         	  break;
           case STATE_COASTLINE:
@@ -1237,27 +1370,26 @@ int main(void)
         		  gs.state = STATE_TRAVEL;
         		  show_travel_menu();
         	  }
-        	  else if (c == '6') {
-        	      gs.prev_state = gs.state;
-        	      gs.state = STATE_INVENTORY;
-        	      gs.day++;
-        	      night_event();
-        	  }
-        	      else if (c == '7') {
+        	      else if (c == '6') {
         	      gs.prev_state = STATE_COASTLINE;
         	      gs.state = STATE_INVENTORY;
         	      show_notes();
         	  }
-        	      else if ( c == '8'){
+        	      else if ( c == '7'){
         	    	  gs.prev_state = STATE_COASTLINE;
         	    	  gs.state = STATE_INVENTORY;
         	    	  build_raft();
 
         	  }
-        	      else if (c == '9'){
+        	      else if (c == '8'){
         	    	  gs.prev_state = STATE_COASTLINE;
         	    	  gs.state = STATE_INVENTORY;
         	    	  try_escape();
+        	  }
+        	      else if (c == '9'){
+        	          gs.prev_state = STATE_COASTLINE;
+        	          gs.state = STATE_INVENTORY;
+        	          show_stats();
         	  }
         	  break;
           case STATE_TOWER:
@@ -1280,6 +1412,11 @@ int main(void)
               } else if (c == '5') {
                   gs.state = STATE_TRAVEL;
                   show_travel_menu();
+              }
+              else if (c == '6'){
+                   gs.prev_state = STATE_TOWER;
+                   gs.state = STATE_INVENTORY;
+                   show_stats();
               }
               break;
 
@@ -1305,6 +1442,11 @@ int main(void)
                   gs.state = STATE_TRAVEL;
                   show_travel_menu();
               }
+              else if (c == '6'){
+                  gs.prev_state = STATE_BUNKER;
+                  gs.state = STATE_INVENTORY;
+                  show_stats();
+              }
               break;
           case STATE_PUZZLE:
               if (gs.active_puzzle == 0){ //radio tower puzzle
@@ -1328,6 +1470,60 @@ int main(void)
                           UART_print("\"...survivor signal received... coordinates locked...\"\r\n");
                           UART_print("\"...rescue team en route... hold your position...\"\r\n");
                           UART_print("\r\nYou solved the Radio puzzle!\r\n");
+                          UART_print("\r\n");
+                          UART_print("                                                                                                    \r\n");
+                          UART_print("                                                                                                    \r\n");
+                          UART_print("                       ...                                                ...                       \r\n");
+                          UART_print("                      .=%%=.                                            .-%%=.                      \r\n");
+                          UART_print("                     .*@@@%=.                                          .=%@@@#..                    \r\n");
+                          UART_print("                   .-%@@@#.                                             ..#@@@%-.                   \r\n");
+                          UART_print("                  .=%@@@=.                                                .=@@@%=.                  \r\n");
+                          UART_print("                  -@@@%=.         .                              ..        .-%@@@=.                 \r\n");
+                          UART_print("                 :@@@@-         .=%=.                         ..=%=..       .-@@@@:.                \r\n");
+                          UART_print("                .%@@@-         .*@@@#:                       .:#@@@*..       .-@@@%.                \r\n");
+                          UART_print("               .*@@@+.        .%@@@%..                        ..#@@@%.        .+@@@#.               \r\n");
+                          UART_print("               -%@@#:        .%@@@*                             .*@@@%..       :#@@%-.              \r\n");
+                          UART_print("              .*@@@+.       .*@@@+.           ..::::..           .+@@@*.       .=@@@*.              \r\n");
+                          UART_print("              :#@@%-       .-%@@#:          .=#@@@@@@#=.         .:#@@%-.      .-%@@#:.             \r\n");
+                          UART_print("             .-%@@#.       .+@@@+.         .%@@@@@@@@@@%.         .=@@@+.       .*@@%-.             \r\n");
+                          UART_print("             .-@@@*.       .*@@%-         .@@@@@@@@@@@@@@.        .-%@@*..      .*@@@=.             \r\n");
+                          UART_print("             .=@@@*        :*@@%:         .@@@@@@@@@@@@@@.        .:%@@*:       .+@@@=.             \r\n");
+                          UART_print("             .-@@@*.       .*@@%-         .@@@@@@@@@@@@@@.        .-%@@*..      .*@@@=.             \r\n");
+                          UART_print("             .-%@@*.       .+@@@=         .:@@@@@@@@@@@@:         .=%@@*.       .*@@@-.             \r\n");
+                          UART_print("              :#@@#:       .=%@@*.         .-@@@@@@@@@@-.        ..*@@%=.      .:#@@#:.             \r\n");
+                          UART_print("              .*@@%=.       .#@@@=.        .@@@+****=@@%.        .-@@@#.       .=%@@*.              \r\n");
+                          UART_print("              .=%@@*.       .:@@@@-        -@@@=.  .-@@@-       .-%@@@:.       .*@@%=.              \r\n");
+                          UART_print("               .#@@@-.       .:@@@@+.     .@@@@@%=-%@@@@%.     .+@@@@-.        -@@@#.               \r\n");
+                          UART_print("                :@@@%.         :%@@@#:    -@@%-+@@@@+:%@@:   .:*@@@%-.        .%@@@-.               \r\n");
+                          UART_print("                .=@@@%.         .*@#:    .#@@+:%@%%@%:+@@#.    :#@*:.       ..%@@@=.                \r\n");
+                          UART_print("                  +@@@%:.        .:     .:%@@@@@+..+@@@@@%:     .:.        .:#@@@+.                 \r\n");
+                          UART_print("                  .+@@@%:.              .+@@@@+.    .=@@@@+.              .:#@@@*..                 \r\n");
+                          UART_print("                   .*@@@@-              :#@@#.       ..#@@#:             .-@@@@*.                   \r\n");
+                          UART_print("                     -%@@@%:.          .-@@@@#-.    .-#@@@@=.          ..#@@@%-.                    \r\n");
+                          UART_print("                      .*@@#:.          .*@@=+%@%-..-%@%+=@@*.          .:#@@#.                      \r\n");
+                          UART_print("                       .::.            :@@@...=%@%#@@=...%@@:            .:-.                       \r\n");
+                          UART_print("                                      .*@@+   ..@@@@..  .+@@*                                       \r\n");
+                          UART_print("                                      .@@@- .:#@@++@@#:. :@@@.                                      \r\n");
+                          UART_print("                                     .+@@*.:*@@*. ..*@@*:.*@@+.                                     \r\n");
+                          UART_print("                                     .#@@*#@@*..    ..+%@#*@@%.                                     \r\n");
+                          UART_print("                                    .+%@@@@*..        ..+@@@@@=                                     \r\n");
+                          UART_print("                                    .*@@%*.              .+%@@*..                                   \r\n");
+                          UART_print("                                   .-%@@#-.             ..-#@@%-.                                   \r\n");
+                          UART_print("                                   .+@@%%@%+..       ...=%@%%@@+.                                   \r\n");
+                          UART_print("                                   :%@@..-%@@#:.    .:*%@%-..@@%:                                   \r\n");
+                          UART_print("                                   -@@%   ..*@@%-..-%@@*.   .%@@-                                   \r\n");
+                          UART_print("                                  .%@@-     ..+%@%%@%+..     :@@%.                                  \r\n");
+                          UART_print("                                 .-@@#:     ..-#@@@@#-.      .%@@-                                  \r\n");
+                          UART_print("                                 .#@@=.    .=%@@+::+@@%=.    .=@@%.                                 \r\n");
+                          UART_print("                                .:%@%-  ..*@@%-.    .-%@@*.  .-%@%:                                 \r\n");
+                          UART_print("                                .*@@*..-#@@#:.        .:#@@#-..+@@#.                                \r\n");
+                          UART_print("                               .:#@%+=%@%+.             ..+%@%==%@#:.                               \r\n");
+                          UART_print("                               .=@@@%@#-....................-#@%@@@+.                               \r\n");
+                          UART_print("                          .-#%%%@@@@@@@%%%%%%%%%%%%%%%%%%%%%%@@@@@@@%%%#-.                          \r\n");
+                          UART_print("                         :%@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@%:.                        \r\n");
+                          UART_print("                        .#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@#.                        \r\n");
+                          UART_print("                        .#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@%.                        \r\n");
+                          UART_print("                        ....................................................                        \r\n");
                       }
                       else {
                           // Wrong
@@ -1362,6 +1558,45 @@ int main(void)
                           UART_print("Fresh air rushes in. You crawl through to the other side.\r\n");
                           UART_print("You found an underground chamber with supplies.\r\n");
                           UART_print("\r\nYou solved the Cave puzzle!\r\n");
+                          UART_print("                                                                                                    \r\n");
+                          UART_print("                                                                                                    \r\n");
+                          UART_print("                                               .....                                                \r\n");
+                          UART_print("                                              -%@@@#-                                               \r\n");
+                          UART_print("                                             =@@-.=%@+.                                             \r\n");
+                          UART_print("                                            -%@-  .:@@+.                                            \r\n");
+                          UART_print("                                          .:#@=     .%@@=..  ..=@%-.                                \r\n");
+                          UART_print("                               ....       .+@*. .-:  .-@@-. .-%@#%@#:.                              \r\n");
+                          UART_print("                              -%@%=.      -@%-. .+-. ..+@*..-@@-..+@#..                             \r\n");
+                          UART_print("                            .=@%+#@%.     *@+.*..-:..%.-%@+*@@=...:#@=.                             \r\n");
+                          UART_print("                            -@@-..*@#.   :@%-:@- .. :@-.#@@*#+.+*..=@%.                             \r\n");
+                          UART_print("                           :%@+.  -@@*...#@#..:. ::..-..+@#.*.... .-@@@+.                           \r\n");
+                          UART_print("                          .+@%..  -#+@@@@@@+.    -*: ...=@%..      :*-%@#.                          \r\n");
+                          UART_print("                    :%+. .-%@:.   -* .+@%.#=.    ... ...+@%.:%@@@%:.=..%@=.                         \r\n");
+                          UART_print("                   .=@%+..+@#..   := :#@-.#:         .-+-@@-@#:..%%:   *@+.                         \r\n");
+                          UART_print("                   :#%:+*:#@-   ...  :%@:.+.         ..:.+@@@+.  *@---.*@+.                         \r\n");
+                          UART_print("                  .-@#..=%@%:   :=:  :%@:     .-***-.     :%@*.  +@--+.=@#:.                        \r\n");
+                          UART_print("                  .*@+-..*@*.   .*=  :%@:     *###@@=      .%%-  +@-::..=@@%*.                      \r\n");
+                          UART_print("                  :@#:. .%@=.    ..  :%@:    .%@@@@@+      .+@*. *@+#%=....=@@*.                    \r\n");
+                          UART_print("                  +@+.  :@%-#@@#.    :%@:    .%@@@@@+      .:%@@##@-. +*    .%@=.                   \r\n");
+                          UART_print("                 .@%#@%.*@*#%..::   .-%@: := .%@@@@@+    .....:+%@@+. =*.    +@*.                   \r\n");
+                          UART_print("               .-@@#--%@@#-##  ... .-%@+. -+..%@@@@@+   ......   :@%- ..     :@%:                   \r\n");
+                          UART_print("               :%@+........## .....*@%-...-*..-%@@@#:.............#@=..      .#@*=.                 \r\n");
+                          UART_print("               =@@. .+:.  .##..:=*%@+.............................=@*..      ..=*@@=.               \r\n");
+                          UART_print("              .*@#  .:..-%@@@@@%@@%:.......-............:.........:%@@%*:.      .=@%:               \r\n");
+                          UART_print("              :#@=     -@*.....-@*.   .:. :**%@@@@@@@@*.+-..=.   .:#=..*@@=.     :@@-               \r\n");
+                          UART_print("             .-%@:     *@=.. .+@+.     -: :@@@@@@@@@@@%-**..+:.   .*-   .*@-     .@@+.              \r\n");
+                          UART_print("             .=@%.     *@=  .%@-    .:*@= -@@@@@@@@@@@@@@@..@%-.  .+-    -%*      #@*.              \r\n");
+                          UART_print("             .+@#. ..  *@=  *@=.   .=@@@* *@@@@@@@@@@@@@@@+=@@@*. ...    -%#  ... +@#.  .:.         \r\n");
+                          UART_print("             .*@+..-+. *@= .#@:   .*@@@@@+@@@@@@@@@@@@@@@@@@@@@@%.       -%#  :+: -@%:  +%..        \r\n");
+                          UART_print("             :%@-..=*. *@=  #@:  .*@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@#..     -%#  -#: .@%-.*@@%=.       \r\n");
+                          UART_print("            .-@%:..**. *@= .-+.  -@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@+.     -%# .=%- .@@=.=@@%-.       \r\n");
+                          UART_print("            .=@#: .##:.*@=      .#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@%:     :%+ .+@=. #@+.*@@%-..      \r\n");
+                          UART_print("          .-#@@@#::%%- *@=  ... :%@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@%-.        .*@+.:%@@@@@@@#:.      \r\n");
+                          UART_print("        .-%@%=-+%@@@@-.+@-  .%..-%@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@=         .#@@@@#+::+@@@%+.      \r\n");
+                          UART_print("       .=@@-.. ...*@@=...   .@. -%@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@+.        :@@%=..    .%@@+.      \r\n");
+                          UART_print("      .-@@-.-*==...=%@=.    :@- -%@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@+.       =@@+.. +::=. =@@%:      \r\n");
+                          UART_print("      .*@@%%%@%%%%%%@@@%%%%%%@@%@@@....:::................::::...#@@%%%%%%%@@@@%%%%@@@%%%%@#:.      \r\n");
+                          UART_print("      ..:-------------------------:  .......             .........:-----------------------:..       \r\n");
                           gs.puzzle_step = 0;
                           gs.active_puzzle = 0;
                           gs.state = STATE_INVENTORY;
@@ -1374,7 +1609,7 @@ int main(void)
                   } else {
                       // Wrong
                       gs.fear += 10;
-                      if (gs.fear > 100) gs.fear = 100;
+                      gs.fear = clamp(gs.fear, 0, 100);
                       gs.puzzle_step = 0; // reset sequence
                       if (gs.difficulty == 0) {
                           UART_print("Wrong choice! The debris shifts dangerously.\r\n");
@@ -1411,6 +1646,38 @@ int main(void)
                           UART_print("A radio console lights up in the corner.\r\n");
                           UART_print("An automated distress beacon activates.\r\n\r\n");
                           UART_print("You solved the Bunker puzzle!\r\n");
+                          UART_print("\r\n");
+                          UART_print("                                                                                                    \r\n");
+                          UART_print("                                                  ..                                                \r\n");
+                          UART_print("                                        ....:=*%%#**#%%*=::...                                      \r\n");
+                          UART_print("                                       .=#*+-...     ....-+*%=.                                     \r\n");
+                          UART_print("                                      .**..      ...:-++*#%@@@#.                                    \r\n");
+                          UART_print("                                     :%+.       .-@@@@@@@@@@@@@%-.                                  \r\n");
+                          UART_print("                                   .+%.         .*@@@@@@@@@@@@@@@=.                                 \r\n");
+                          UART_print("                             ..:=#%*-.      ....-@@@@@@@@@@@@@@@@@@@%=:...                          \r\n");
+                          UART_print("                            .*#+:.:%%%###**+#@@@@@@@@@@@@@@@@@@@@@@@@@@@%:.                         \r\n");
+                          UART_print("                          .-%-....%@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@%-.                        \r\n");
+                          UART_print("                         .+#:   .+@@@@@@@@@%%#############%@@@@@@@@@@@@@@@@+.                       \r\n");
+                          UART_print("                        .*+..  .-@@@@@@#:.=%@@@@@@@@@@@@@@%=..#@@@@@@@@@@@@@%.                      \r\n");
+                          UART_print("                      .-%=..-*@@@@@@@*.+@@@@@@@@@@@@@@@@@@@@@@*:+@@@@@@@@@@@##=..                   \r\n");
+                          UART_print("                   ..=#+.  :%@@@@@@@=-@@@@@@@@@@@@@@@@@@@@@@@@@%==@@@@@@@#-..-#%+..                 \r\n");
+                          UART_print("                  .*#-..   :%@@@@@@+-%@@@@@@@@@@@@@@@@@@@@@@@@@@%-*@@@@@@@@@@@@@@@*:.               \r\n");
+                          UART_print("                  +#..     :%@@@@@%=*@@@@@@#..............-%%@@@@+.@@@@@@@@@@@@@@@@+..              \r\n");
+                          UART_print("                 :%-       -%@@@@@%-*@@@@@@#..............-%@@@@@*.%@@@@@@@@@@@@@@@%:.              \r\n");
+                          UART_print("                .+#.       -@@@@%@%=*@%%%%%%#***#*##******%@%%%%%*.#%@@@@@@@@@@@@@@@+.              \r\n");
+                          UART_print("              .-#*.      .:#@@@@%%%=*@@%%%%*..............-%%@%%%*.%%@%@@@@@@@@@@@@@@%=.            \r\n");
+                          UART_print("            .+%=..      .+%@@@@@@@%-*@@@@@@%**************#@@@@@@*.%@@@@@@@@@@@@@@@@@@@%+.          \r\n");
+                          UART_print("          .*%-....     -@@@@@@@@@@%-*@@@@@@@@@@@@@@@@@@@@@@@@@@@@*.%@@@@@@@@@@@@@@@@@@@@*##.        \r\n");
+                          UART_print("          =*..       .*@@@@@@@@@@@%-*@@@@@@@@@@@@@@@@@@@@@@@@@@@@*.%@@@@@@@@@@@@@@@@@@@%*.**.       \r\n");
+                          UART_print("          ++..       .+@@@@@@@@@@@%-*@@%-.*@@@@@@@@@@@@@@@@@@@@@@*.%@@@@@@@@@@@@@@@%#-:::.+#.       \r\n");
+                          UART_print("          *+..       .=%@@@@@@@@@@%-*@@#  .@@@@@@@@@@@@@@@@@@@@@@*.%@@@@@@@@@@@@@@@@@@@@@%##.       \r\n");
+                          UART_print("        .-%-..        =%@@@@@@@@@@%-*@@#  .@@@@@@@@@@@@@@@@@@@@@@*.%@@@@@@@@@@@@@@@@@@@@@@@%+.      \r\n");
+                          UART_print("       .##.           -%@@@@@@@@@@%-*@@#  .@@@@@@@@@@@@@@@@@@@@@@*.%@@@@@@@@@@@@@@@@@@@@@@@@@#.     \r\n");
+                          UART_print("     .-#-.            -%@@@@@@@@@@%-*@@@%#%@@@@@@@@@@@@@@@@@@@@@@*.%@@@@@@@@@@@@@@@@@@@@@@@@@@@=.   \r\n");
+                          UART_print("     .#-.             -%@@@@@@@@@@%-*@@@@@@@@@@@@@@@@@@@@@@@@@@@@*.%@@@@@@@@@@@@@@@@@@@@@@@@@@@@:   \r\n");
+                          UART_print("    ..:................::::::::::::.*@@@@@@@@@@@@@@@@@@@@@@@@@@@@*.:::::::::::::::::::::::::::::... \r\n");
+                          UART_print("  .=@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@%-*@@@@@@@@@@@@@@@@@@@@@@@@@@@@*.%@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@=.\r\n");
+                          UART_print("  .=@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@%-*@@@@@@@@@@@@@@@@@@@@@@@@@@@@*.%@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@=.\r\n");
                           gs.puzzle_step = 0;
                           gs.active_puzzle = 0;
                           gs.state = STATE_INVENTORY;
@@ -1420,10 +1687,10 @@ int main(void)
                   }
                   else {
                       // Wrong choice
-                      gs.health -= 10;
-                      gs.fear += 10;
-                      if (gs.health < 0) gs.health = 0;
-                      if (gs.fear > 100) gs.fear = 100;
+                	  gs.health -= 10;
+                	  gs.fear += 10;
+                	  gs.health = clamp(gs.health, 0, 100);
+                	  gs.fear = clamp(gs.fear, 0, 100);
                       gs.puzzle_step = 0;
                       if (c == '1' || c == '2') {
                           UART_print("Sparks fly as the system shorts out.\r\n");
