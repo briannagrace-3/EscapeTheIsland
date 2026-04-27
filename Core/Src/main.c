@@ -792,6 +792,8 @@ void puzzle_radio(void){
 	if (gs.puzzles_solved & 0x01) {
 	    UART_print("\r\nThe radio is already transmitting a signal.\r\n");
 	    UART_print("\r\nPress any key to continue...\r\n");
+	    gs.state = STATE_INVENTORY;
+	    gs.prev_state = STATE_TOWER;
 	    return;
 	}
     // Check required items
@@ -844,6 +846,8 @@ void puzzle_cave(void){
 	if (gs.puzzles_solved & 0x02) {
 	    UART_print("\r\nThe passage is already clear.\r\n");
 	    UART_print("\r\nPress any key to continue...\r\n");
+	    gs.state = STATE_INVENTORY;
+	    gs.prev_state=STATE_CAVE;
 	    return;
 	}
 	else if (!(gs.flags & FLAG_FOUND_KEY)) {
@@ -879,6 +883,8 @@ void puzzle_bunker(void){
 	if (gs.puzzles_solved & 0x04) {
 	    UART_print("\r\nThe generator is already running.\r\n");
 	    UART_print("\r\nPress any key to continue...\r\n");
+	    gs.state = STATE_INVENTORY;
+	    gs.prev_state = STATE_BUNKER;
 	    return;
 	}
 	else if (!gs.inventory[ITEM_BATTERY] || !gs.inventory[ITEM_WIRE]) {
@@ -939,7 +945,7 @@ void build_raft(void)
     gs.flags |= FLAG_RAFT_BUILT;
     gs.morale += 20;
     gs.morale = clamp(gs.morale, 0, 100);
-    UART_print("\r\nYou and the Survivalist spend the day building a raft.\r\n");
+    UART_print("\r\nYou spend the day building a raft.\r\n");
     UART_print("It's rough but it'll hold.\r\n");
     UART_print("Morale increased.\r\n");
     gs.day++;
